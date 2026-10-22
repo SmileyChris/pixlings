@@ -6,6 +6,9 @@ import { CANVAS_W } from './canvas.ts'
 export const STEP_MS = 150
 const REST_MIN_MS = 4000
 const REST_SPAN_MS = 8000
+/** A calm pixling rests longer between strolls. */
+const CALM_REST_MIN_MS = 30_000
+const CALM_REST_SPAN_MS = 60_000
 /** Columns the speech bubble and the name need beside the canvas. */
 const INFO_COLUMNS = 50
 export const MAX_ROAM = 30
@@ -37,9 +40,9 @@ export const isWalking = (w: Walker): boolean => w.target !== null && w.target !
 
 /**
  * Moves the walker on to `now`: as many steps as the time since the last one allows, each `stride`
- * pixels (a column of the band, where its pixels are smaller than a cell).
+ * pixels (a column of the band, where its pixels are smaller than a cell). Calm, it rests longer.
  */
-export const walk = (w: Walker, range: number, mode: RoamMode, now: number, random: () => number, stride = 1): Walker => {
+export const walk = (w: Walker, range: number, mode: RoamMode, now: number, random: () => number, stride = 1, isCalm = false): Walker => {
   let x = Math.min(w.x, range)
   let target = w.target === null ? null : Math.min(w.target, range)
   let { restUntil, isFlipped, lastStepAt } = w
@@ -69,7 +72,11 @@ export const walk = (w: Walker, range: number, mode: RoamMode, now: number, rand
   }
 
   if (target !== null && x === target) {
-    if (mode === 'wander') restUntil = now + REST_MIN_MS + Math.floor(random() * REST_SPAN_MS)
+    if (mode === 'wander') {
+      restUntil = isCalm
+        ? now + CALM_REST_MIN_MS + Math.floor(random() * CALM_REST_SPAN_MS)
+        : now + REST_MIN_MS + Math.floor(random() * REST_SPAN_MS)
+    }
     target = null
     if (mode === 'home') isFlipped = false
   }

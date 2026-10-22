@@ -237,6 +237,7 @@ export const register: Register = (on, options) => {
   const wantsCacheWarning = options['cacheWarning'] !== false
   const ttlSetting = String(options['cacheTtl'] ?? 'auto')
   const wantsRoam = options['roam'] !== false
+  const isCalm = options['calm'] === true
   const voiceMode = String(options['voice'] ?? 'animalese')
 
   // The engine's clock is the one timers run on; Date.now() is synced to it every second so
@@ -644,6 +645,7 @@ export const register: Register = (on, options) => {
       hat,
       face,
       icon: activeIcon,
+      isCalm,
       width: CANVAS_W + range,
       x: SPRITE_X + Math.min(w?.x ?? range, range),
       isFlipped: isStepping ? (w?.isFlipped ?? false) : false,
@@ -684,7 +686,7 @@ export const register: Register = (on, options) => {
     const isHeld = held !== null && at < held.until
     const mode: RoamMode = nap || mood === 'sleep' || isHeld || compactingSince !== null ? 'stay' : isWorking ? 'home' : 'wander'
     // A step is a column of the band, however many pixels that is.
-    walker = walk(walker, range, mode, at, Math.random, Math.max(1, Math.round(walkScaleNow())))
+    walker = walk(walker, range, mode, at, Math.random, Math.max(1, Math.round(walkScaleNow())), isCalm)
   }
 
   // Vitals --------------------------------------------------------------------------------
@@ -692,7 +694,7 @@ export const register: Register = (on, options) => {
   const refreshVitals = async (at: number): Promise<void> => {
     const port = io
     if (!port || !wantsVitals) return
-    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, turnDelta })
+    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, turnDelta, isCalm })
     const key = pieces.map(v => `${v.text}:${v.tone}`).join('|')
     if (key !== lastVitals) {
       lastVitals = key
@@ -2220,6 +2222,7 @@ export const register: Register = (on, options) => {
       hat,
       face,
       icon: icon && at < icon.until ? icon.icon : null,
+      isCalm,
     })
   }
 

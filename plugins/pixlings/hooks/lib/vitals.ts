@@ -250,6 +250,9 @@ export const countdown = (ms: number): string => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
+/** "5m" for 4:07 left, "1m" in the last minute: a countdown that ticks once a minute. */
+export const minutesLeft = (ms: number): string => `${Math.max(1, Math.ceil(ms / 60_000))}m`
+
 /** "84k", "1.2M", "950". */
 export const tokens = (n: number): string => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
@@ -306,6 +309,8 @@ export type VitalsInput = {
   readonly effort?: string | number
   /** What the last turn took from the rate limits (turnQuota); the largest rise is shown. */
   readonly turnDelta?: readonly QuotaDelta[]
+  /** The cache counts down in minutes, not seconds. */
+  readonly isCalm?: boolean
 }
 
 /**
@@ -319,7 +324,7 @@ export const vitals = (v: VitalsInput): Vital[] => {
   if (v.isWorking && left !== null) out.push({ text: '⚡ cache live', tone: 'good' })
   else if (left !== null && left > 0) {
     const pin = v.cache.isTtlKnown ? '' : '~'
-    out.push({ text: `⏳ cache ${pin}${countdown(left)}`, tone: cacheTone(left, v.cache.ttl) })
+    out.push({ text: `⏳ cache ${pin}${v.isCalm ? minutesLeft(left) : countdown(left)}`, tone: cacheTone(left, v.cache.ttl) })
   } else if (left !== null) out.push({ text: '❄ cache cold', tone: 'cold' })
 
   const hit = hitPercent(v.cache)

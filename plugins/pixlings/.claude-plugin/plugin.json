@@ -99,6 +99,12 @@
       "description": "When Claude is idle the pixling strolls along the free columns of the band.",
       "default": true
     },
+    "calm": {
+      "type": "boolean",
+      "title": "Calm",
+      "description": "The pixling holds still while idle, working or asleep (it still moves when something happens), rests longer between strolls, and the cache counts down in minutes instead of seconds.",
+      "default": false
+    },
     "voice": {
       "type": "string",
       "title": "Voice",

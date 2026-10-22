@@ -117,6 +117,7 @@ All in `/config`, under Pixlings.
 | `cacheGuard` | Ask before a `/model` switch throws away a warm cache that costs real money to write again | on |
 | `cacheTtl` | `auto`, `5m`, `1h` | `auto` |
 | `roam` | Walk around when Claude is idle | on |
+| `calm` | Hold still while idle, working or asleep (it still hops, shakes and celebrates when something happens), rest 30–90 s between strolls instead of 4–12 s, and count the cache down in minutes instead of seconds | off |
 | `heckle` | A faint eye roll and running count under Claude's "You're absolutely right" | off |
 
 ## Questions

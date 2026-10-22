@@ -5,6 +5,7 @@
 ### New
 
 - **Band sizes.** `band` takes `compact` (4 rows) and `slim` (2 rows) alongside `full` and `minimal`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen), `compact`, `slim` and `minimal` draw the pixling as a sharp picture. Elsewhere `compact` is drawn as `full` and `slim` as `minimal`. A band with fewer rows than its size steps down a size instead of jumping straight to one line.
+- **Calm.** Turn `calm` on and the pixling holds still while idle, working or asleep, still hopping, shaking and celebrating when something happens; it rests 30–90 s between strolls instead of 4–12 s; and the cache counts down in minutes (`⏳ cache 4m`) instead of seconds.
 
 ### Changed
 

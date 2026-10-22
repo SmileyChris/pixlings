@@ -11,7 +11,7 @@ import type { Pixling } from '../hooks/lib/progress.ts'
 import { isWalking, MAX_ROAM, newWalker, roamRange, STEP_MS, walk } from '../hooks/lib/roam.ts'
 import { SPECIES } from '../hooks/lib/sprites.ts'
 import { addTics, isEyeRoll, ticsIn, topTics } from '../hooks/lib/tics.ts'
-import { countdown, freshCache, hitPercent, observe, remainingMs, tokens, TTL_MS, vitals } from '../hooks/lib/vitals.ts'
+import { countdown, freshCache, hitPercent, minutesLeft, observe, remainingMs, tokens, TTL_MS, vitals } from '../hooks/lib/vitals.ts'
 
 const seeded = (seed: number) => () => {
   seed = (seed * 1103515245 + 12345) % 2 ** 31
@@ -37,6 +37,32 @@ describe('the prompt cache', () => {
     expect(countdown(4 * MIN + 7_000)).toBe('4:07')
     expect(countdown(-5)).toBe('0:00')
     expect(remainingMs(freshCache(), T0)).toBeNull()
+  })
+
+  test('calm, the countdown ticks in minutes: never 0m while it is warm', () => {
+    expect(minutesLeft(4 * MIN + 7_000)).toBe('5m')
+    expect(minutesLeft(4 * MIN)).toBe('4m')
+    expect(minutesLeft(20_000)).toBe('1m')
+    const { cache } = observe(freshCache(), usage(0), T0)
+    const at = T0 + MIN + 30_000
+    const input = { cache, now: at, isWorking: false, contextPercent: null, limits: [] }
+    expect(vitals(input)[0]?.text).toMatch(/cache ~?3:30/)
+    expect(vitals({ ...input, isCalm: true })[0]?.text).toMatch(/cache ~?4m$/)
+  })
+
+  test('calm, it holds still at rest and still moves when something happens', () => {
+    const duck = SPECIES.find(s => s.id === 'duck')!
+    // The rows its head tops out at over a few seconds: one when it holds still. Glances and blinks
+    // change the face, not where it stands; the sleeper's floating z's are left out.
+    const Z = [0xcfe3ff, 0x7d93b8]
+    const top = (f: { w: number; px: Int32Array }) => Math.floor(f.px.findIndex(c => c !== TRANSPARENT && !Z.includes(c)) / f.w)
+    const frames = (mood: 'idle' | 'working' | 'sleep' | 'happy', isCalm: boolean) =>
+      new Set([0, 700, 1400, 2100, 2800].map(t => top(renderFrame({ species: duck, isShiny: false, mood, t: t + 100, isCalm }))))
+    for (const mood of ['idle', 'working', 'sleep'] as const) {
+      expect(frames(mood, false).size, mood).toBeGreaterThan(1)
+      expect(frames(mood, true).size, mood).toBe(1)
+    }
+    expect(frames('happy', true).size).toBeGreaterThan(1)
   })
 
   test('two hits after more than five minutes prove the hour-long TTL', () => {
@@ -204,6 +230,17 @@ describe('walking', () => {
     expect(w.x).toBe(target)
     expect(w.target).toBeNull()
     expect(w.restUntil).toBeGreaterThan(10_000 + STEP_MS * 40)
+  })
+
+  test('calm, it rests half a minute to a minute and a half between strolls', () => {
+    const arrive = (isCalm: boolean) => {
+      let w = walk(newWalker(30, 0), 30, 'wander', 10_000, seeded(4), 1, isCalm)
+      w = walk(w, 30, 'wander', 10_000 + STEP_MS * 40, seeded(4), 1, isCalm)
+      return w.restUntil - (10_000 + STEP_MS * 40)
+    }
+    expect(arrive(false)).toBeLessThan(12_000)
+    expect(arrive(true)).toBeGreaterThanOrEqual(30_000)
+    expect(arrive(true)).toBeLessThan(90_000)
   })
 
   test('a flipped pixling is the mirror image, wherever it stands on a wide canvas', () => {

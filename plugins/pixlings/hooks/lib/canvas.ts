@@ -59,6 +59,8 @@ export type FrameInput = {
   readonly squishT?: number | null
   /** Milliseconds since a compaction ended, springing back up; null or absent when none did. */
   readonly reliefT?: number | null
+  /** Holds still at rest: idle, working and asleep draw no bob. */
+  readonly isCalm?: boolean
   /** Subagents' minis, on a strip of their own right of the canvas `width`. */
   readonly squad?: readonly MiniView[]
   /** Minis past the strip's cap, counted as "+N" at its end. */
@@ -776,6 +778,9 @@ const BOUNCE = [0, -1, -2, -1]
 
 const blinking = (t: number): boolean => t % 4200 > 4040
 
+/** The moods a calm pixling holds still in; the others are something happening, and move. */
+const RESTING: ReadonlySet<Mood> = new Set(['idle', 'working', 'sleep'])
+
 const pose = (mood: Mood, t: number): Pose => {
   switch (mood) {
     case 'idle':
@@ -864,7 +869,9 @@ export const renderFrame = (input: FrameInput): Pixels => {
     ? { dx: 0, dy: 0, eyes: 'closed', mouth: 'none', hasCheeks: false }
     : springT !== null
       ? { dx: 0, dy: springT < 160 ? 0 : springT < 320 ? -3 : -1, eyes: 'happy', mouth: 'open', hasCheeks: true }
-      : pose(mood, t)
+      : input.isCalm && RESTING.has(mood)
+        ? { ...pose(mood, t), dy: 0 }
+        : pose(mood, t)
   const { dx, eyes, mouth, hasCheeks } = look
   const dy = Math.max(look.dy, -headroom(s, layout.y, input.hat, input.hasCap))
   const ox = spriteX + dx
