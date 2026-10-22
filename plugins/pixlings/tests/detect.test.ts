@@ -119,46 +119,50 @@ describe('risky commands', () => {
     expect(labelOf('rm -rf dist')).toBe('rm -rf')
   })
 
-  // The best of five runs: backtracking shows in every run, a busy machine only in some. Each run
-  // reads a new string, so the parse is never served from the last call.
-  const fastest = (cmd: string): number => {
-    let best = Infinity
-    for (let run = 1; run <= 5; run++) {
-      const fresh = cmd + ' '.repeat(run)
+  // How much longer eight times the input takes to read: about 8 when the reader is linear, 64 when
+  // it is quadratic, however busy the machine is with other suites. The best of five runs, the two
+  // sizes taken in turn so a busy spell slows both alike; each run reads a new string, so the parse
+  // is never served from the last call.
+  const growth = (build: (n: number) => string, n: number): number => {
+    const time = (cmd: string): number => {
       const started = performance.now()
-      riskOf(fresh)
-      isTestCommand(fresh)
-      best = Math.min(best, performance.now() - started)
+      riskOf(cmd)
+      isTestCommand(cmd)
+      return performance.now() - started
     }
-    return best
+    let small = Infinity
+    let big = Infinity
+    for (let run = 1; run <= 5; run++) {
+      small = Math.min(small, time(build(n) + ' '.repeat(run)))
+      big = Math.min(big, time(build(8 * n) + ' '.repeat(run)))
+    }
+    return big / small
   }
 
-  // A guard against backtracking, not a speed target: alone each read takes ~1 ms, and a
-  // quadratic or worse reader would take hundreds; the margin absorbs a machine busy with
-  // other suites.
-  test('a 10,000-character command is read in milliseconds, without regex backtracking', () => {
-    const long = [
-      'echo ' + '"a b c" '.repeat(1_300),
-      'x'.repeat(10_000),
-      '$('.repeat(5_000) + 'rm -rf x',
-      'DELETE FROM ' + 'a.'.repeat(5_000),
-      'rm ' + '-'.repeat(10_000),
-      'git push ' + '+'.repeat(10_000),
-      'mvn ' + 'clean '.repeat(1_700) + 'install',
-      "psql <<'S'\n" + 'DROP TABLE x;\n'.repeat(750),
-      "git commit -m \"$(cat <<'EOF'\n" + 'Fix the flaky jest config and rm -rf the cache.\n'.repeat(210) + 'EOF\n)"',
-      'python -c "' + 'print(1); '.repeat(1_000) + '"',
+  test('a 10,000-character command is read in linear time, without regex backtracking', () => {
+    // Each grows to 10,000 characters or more at eight times its size.
+    const long: [(n: number) => string, number][] = [
+      [n => 'echo ' + '"a b c" '.repeat(n), 160],
+      [n => 'x'.repeat(n), 1_250],
+      [n => '$('.repeat(n) + 'rm -rf x', 625],
+      [n => 'DELETE FROM ' + 'a.'.repeat(n), 625],
+      [n => 'rm ' + '-'.repeat(n), 1_250],
+      [n => 'git push ' + '+'.repeat(n), 1_250],
+      [n => 'mvn ' + 'clean '.repeat(n) + 'install', 213],
+      [n => "psql <<'S'\n" + 'DROP TABLE x;\n'.repeat(n), 94],
+      [n => "git commit -m \"$(cat <<'EOF'\n" + 'Fix the flaky jest config and rm -rf the cache.\n'.repeat(n) + 'EOF\n)"', 27],
+      [n => 'python -c "' + 'print(1); '.repeat(n) + '"', 125],
     ]
-    for (const cmd of long) {
+    for (const [build, n] of long) {
+      const cmd = build(8 * n)
       expect(cmd.length).toBeGreaterThanOrEqual(10_000)
-      expect([cmd.slice(0, 12), fastest(cmd) < 25]).toEqual([cmd.slice(0, 12), true])
+      expect([cmd.slice(0, 12), growth(build, n) < 24]).toEqual([cmd.slice(0, 12), true])
     }
   })
 
   test('thousands of tiny commands stay linear', () => {
-    // Each simple command costs a few microseconds in the test runtime; this guards the scaling.
-    expect(fastest('a | '.repeat(2_500)) < 25).toBe(true)
-    expect(fastest('a;'.repeat(5_000)) < 25).toBe(true)
+    expect(growth(n => 'a | '.repeat(n), 1_000) < 24).toBe(true)
+    expect(growth(n => 'a;'.repeat(n), 1_000) < 24).toBe(true)
   })
 })
 
