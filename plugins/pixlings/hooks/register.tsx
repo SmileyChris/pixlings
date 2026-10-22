@@ -6,7 +6,7 @@ import type { PixlingsPersona } from '../types'
 import { award, BADGES, countDay, earnedBadges, localDate, recapLine, touchDay } from './lib/badges.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
-import { adopt, companionOf, configPath, speciesNamed } from './lib/buddy.ts'
+import { adopt, cleanName, companionOf, configPath, speciesNamed } from './lib/buddy.ts'
 import type { Companion } from './lib/buddy.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from './lib/card.ts'
 import { CANVAS_W, HATCH_MS, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
@@ -2050,7 +2050,7 @@ export const register: Register = (on, options) => {
       case 'pet':
         return pet()
       case 'name': {
-        const name = arg.replace(/[^\p{L}\p{N} _'-]/gu, '').slice(0, 20).trim()
+        const name = cleanName(arg)
         if (!name) return { text: 'Usage: /pixling name <new name>' }
         pixling = { ...pixling, name }
         persist()
