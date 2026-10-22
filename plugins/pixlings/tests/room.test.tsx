@@ -8,7 +8,8 @@ import { SPECIES } from '../hooks/lib/sprites.ts'
 /** Tests that mount on every surface, or run seconds of clock: slower when suites share the CPU. */
 const LONG = 20_000
 
-const NOON = Date.parse('2026-10-03T12:00:00Z')
+// Noon local time, so it is 3 October in every timezone, as the stored streak says.
+const NOON = new Date(2026, 9, 3, 12).getTime()
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 const BANDS = ['terminal', 'desktop'] as const
@@ -68,7 +69,7 @@ const DUCK = {
   species: 'duck',
   isShiny: false,
   name: 'Quackers',
-  hatchedAt: Date.parse('2026-09-01T00:00:00Z'),
+  hatchedAt: new Date(2026, 8, 1).getTime(),
   xp: 120,
   hat: null,
   face: null,

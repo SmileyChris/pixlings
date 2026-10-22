@@ -209,7 +209,7 @@ describe('the band', () => {
     on('classic.StopFailure', () => ({}))
     on('prompt.submit', ($, e) => {
       submitted.push(e.text)
-      return { value: { text: e.text } } as never
+      return { text: e.text }
     })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(10_000)

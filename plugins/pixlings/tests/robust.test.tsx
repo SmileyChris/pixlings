@@ -83,8 +83,8 @@ const host = (on: On, stored?: unknown, now = NOON) => {
   on('turn.complete', () => ({ text: '' }))
   on('prompt.submit', ($, e) => {
     submitted.push(e.text)
-    // The plugin's own $.prompt.submit is answered as an op; the test's direct call as the event.
-    return (e.origin?.kind === 'plugin' ? { value: { text: e.text } } : { text: e.text }) as never
+    // The plugin's own $.prompt.submit and the test's direct call both arrive as the event.
+    return { text: e.text }
   })
   return { clock, db, ran, submitted, toasts, session }
 }

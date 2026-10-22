@@ -100,7 +100,7 @@ const host = (on: On, o: HostOptions = {}) => {
   const submitted: string[] = []
   on('prompt.submit', ($, e) => {
     submitted.push(e.text)
-    return (e.origin?.kind === 'plugin' ? { value: { text: e.text } } : { text: e.text }) as never
+    return { text: e.text }
   })
   return { clock, db, ran, invalidated, submitted }
 }

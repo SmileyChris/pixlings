@@ -147,7 +147,7 @@ const host = (on: On, o: HostOptions = {}) => {
   on('turn.complete', () => ({ text: '' }))
   on('prompt.submit', ($, e) => {
     submitted.push(e.text)
-    return (e.origin?.kind === 'plugin' ? { value: { text: e.text } } : { text: e.text }) as never
+    return { text: e.text }
   })
   on('classic.StopFailure', () => ({}))
   on('classic.Notification', () => ({}))
