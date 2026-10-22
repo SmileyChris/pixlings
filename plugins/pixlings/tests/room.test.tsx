@@ -47,11 +47,19 @@ const BAND = {
   viewport: { columns: 110, rows: 40 },
 } as const
 
+const printed = (command: string, args: string): string =>
+  args === '' || args === 'card'
+    ? 'Quackers the Duck, level 3. /pixling share saves its card.'
+    : command === 'pixling' && args === 'dex'
+      ? 'Pixledex: 2/15 species hatched.'
+      : 'Quackers is wearing a party hat now.'
+
 const card = (command: string, args: string) =>
   ({
     plugin: 'pixlings',
     component: 'CommandOutput',
-    props: { command, args, text: 'Quackers the Duck, level 3.', isErrored: false },
+    // What each printed: the card's line, the dex's count, or another answer.
+    props: { command, args, text: printed(command, args), isErrored: false },
     viewport: { columns: 100, rows: 40 },
   }) as const
 
@@ -446,7 +454,7 @@ describe('the band', () => {
         expect(await ui.find({ type: 'Text', text: 'Quackers' }), surface).toBeDefined()
         shared['isAway'] = true
         await ui.redraw()
-        expect(await ui.drawn(), surface).toEqual(ENGINE)
+        expect(await ui.drawn(), surface).toMatchObject(ENGINE)
         await ui.unmount()
       }
     })
@@ -461,7 +469,7 @@ describe('the band', () => {
     await $.command.run({ command: 'pixling', args: 'off' } as never)
     expect(db.get('away')).toBe(true)
     await band.redraw()
-    expect(await band.drawn()).toEqual(ENGINE)
+    expect(await band.drawn()).toMatchObject(ENGINE)
     const room = await $.ui.mount(pane('terminal', 60))
     expect(await room.find({ type: 'Text', text: '💤 Quackers is away.' })).toBeDefined()
     await room.unmount()
@@ -505,7 +513,24 @@ describe('the card', () => {
       }
       for (const args of ['dex', 'adopt']) {
         const ui = await $.ui.mount({ ...card('buddy', args), surface })
-        expect(await ui.drawn(), `${surface} /buddy ${args}`).toEqual(ENGINE)
+        expect(await ui.drawn(), `${surface} /buddy ${args}`).toMatchObject(ENGINE)
+        await ui.unmount()
+      }
+    }
+  })
+
+  test("another subcommand's answer is drawn as printed, whatever arguments the row echoes", { timeoutMs: LONG }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await start($)
+    await clock.advance(3000)
+    for (const surface of SURFACES) {
+      for (const args of ['wear party', '']) {
+        const ui = await $.ui.mount({
+          ...card('pixling', args),
+          props: { command: 'pixling', args, text: 'Quackers is wearing a party hat now.', isErrored: false },
+          surface,
+        })
+        expect(await ui.drawn(), `${surface} /pixling ${args}`).toMatchObject(ENGINE)
         await ui.unmount()
       }
     }
@@ -522,7 +547,7 @@ describe('the card', () => {
     for (const surface of SURFACES) {
       for (const command of ['pixling', 'buddy']) {
         const ui = await $.ui.mount({ ...card(command, ''), surface })
-        expect(await ui.drawn(), `${surface} /${command}`).toEqual(ENGINE)
+        expect(await ui.drawn(), `${surface} /${command}`).toMatchObject(ENGINE)
         await ui.unmount()
       }
     }
@@ -586,7 +611,7 @@ describe('the heckle', () => {
     await clock.advance(3000)
     for (const surface of BANDS) {
       const ui = await $.ui.mount(message(surface, `off-${surface}`, RIGHT))
-      expect(await ui.drawn(), surface).toEqual(ENGINE)
+      expect(await ui.drawn(), surface).toMatchObject(ENGINE)
       expect(asked.find(a => a.requestId === `off-${surface}`)?.props, surface).toEqual({ text: RIGHT, isFirstOfReply: true })
       await ui.unmount()
     }
@@ -599,7 +624,7 @@ describe('the heckle', () => {
     for (const surface of BANDS) {
       const ui = await $.ui.mount(message(surface, `on-${surface}`, RIGHT))
       const tree = (await ui.drawn()) as Node
-      expect(tree.children?.[0], surface).toEqual(ENGINE)
+      expect(tree.children?.[0], surface).toMatchObject(ENGINE)
       // The props passed on are the ones the engine raised: the stored message is not touched.
       expect(asked.filter(a => a.requestId === `on-${surface}`).map(a => a.props), surface).toEqual([{ text: RIGHT, isFirstOfReply: true }])
       const roll = await ui.find({ type: 'Text', text: /^\(¬_¬\) #\d+$/ })
@@ -650,7 +675,7 @@ describe('the heckle', () => {
     expect(await m1.find({ type: 'Text', text: /^\(¬_¬\) #/ })).toBeDefined()
     await m1.unmount()
     const d1 = await $.ui.mount({ ...card('pixling', 'dex'), surface: 'terminal' })
-    expect(await d1.drawn()).not.toEqual(ENGINE)
+    expect(await d1.drawn()).not.toMatchObject(ENGINE)
     await d1.unmount()
 
     await $.command.run({ command: 'pixling', args: 'off' } as never)
@@ -661,10 +686,10 @@ describe('the heckle', () => {
     expect(wordOf('turn-away')).toBe('Worked')
     await t2.unmount()
     const m2 = await $.ui.mount(message('terminal', 'away', RIGHT))
-    expect(await m2.drawn()).toEqual(ENGINE)
+    expect(await m2.drawn()).toMatchObject(ENGINE)
     await m2.unmount()
     const d2 = await $.ui.mount({ ...card('pixling', 'dex'), surface: 'terminal' })
-    expect(await d2.drawn()).toEqual(ENGINE)
+    expect(await d2.drawn()).toMatchObject(ENGINE)
     await d2.unmount()
   })
 
@@ -673,7 +698,7 @@ describe('the heckle', () => {
     await start($)
     await clock.advance(3000)
     const ui = await $.ui.mount(message('terminal', 'plain', 'Here is the plan: `you are absolutely right` stays in code.'))
-    expect(await ui.drawn()).toEqual(ENGINE)
+    expect(await ui.drawn()).toMatchObject(ENGINE)
     await ui.unmount()
   })
 })

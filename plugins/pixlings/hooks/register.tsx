@@ -89,6 +89,9 @@ const STORE_KEY = 'pixling'
 const BACKUP_KEY = 'pixlingBackup'
 const SEEN_KEY = 'lastSeen'
 const TTL_KEY = 'cacheTtl'
+/** How the card's text and the dex's begin and end: what their output rows are told apart by. */
+const CARD_END = '/pixling share saves its card.'
+const DEX_START = 'Pixledex: '
 /** The cache warning comes this long before it expires, and only over a context worth saving. */
 const COOLING_WARN_MS = 60_000
 const MIN_WARN_CONTEXT = 20_000
@@ -1957,7 +1960,7 @@ export const register: Register = (on, options) => {
     const quips = p.stats.quips > 0 || quipMode === 'haiku' ? [`AI quips: ${p.stats.quips}, ${p.stats.quipTokens} tok in all.`] : []
     const away = isAway ? [`${p.name} is away. /pixling on brings it back.`] : []
     return [
-      `${p.name} the ${species().name}, level ${levelOf(p.xp).level}. /pixling share saves its card.`,
+      `${p.name} the ${species().name}, level ${levelOf(p.xp).level}. ${CARD_END}`,
       `Personality: ${p.persona}`,
       ...met,
       ...quips,
@@ -2082,7 +2085,7 @@ export const register: Register = (on, options) => {
         return { text: `${pixling.name} is wearing ${item || 'nothing'} now.` }
       }
       case 'dex':
-        return { text: `Pixledex: ${pixling.dex.length}/${SPECIES.length} species hatched.` }
+        return { text: `${DEX_START}${pixling.dex.length}/${SPECIES.length} species hatched.` }
       case 'hatch': {
         const keep = `Keep ${pixling.name}`
         let answer = keep
@@ -2303,11 +2306,13 @@ export const register: Register = (on, options) => {
   })
 
   // `/pixling` and `/buddy` print the card; `/pixling dex` the species hatched so far.
+  // Told apart by what the row printed, not the echoed arguments, so every other subcommand's
+  // answer is drawn as it was printed.
   on('ui.render', { component: 'CommandOutput', props: { command: ['pixling', 'buddy'] } }, async ($, e, next) => {
-    const sub = e.props.args.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+    const { text } = e.props
+    const sub = e.props.command === 'pixling' && text.startsWith(DEX_START) ? 'dex' : text.split('\n')[0]?.endsWith(CARD_END) ? 'card' : null
     const p = pixling
-    const subs = e.props.command === 'buddy' ? ['', 'card'] : ['', 'card', 'dex']
-    if (!p || e.props.isErrored || !subs.includes(sub)) return next(e)
+    if (!p || e.props.isErrored || sub === null) return next(e)
     // Sent away: the card and the dex are the engine's plain line until it is called back.
     if ((await read($, roomAway)) === true) return next(e)
     const s = species()
