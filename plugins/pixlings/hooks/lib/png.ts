@@ -141,13 +141,14 @@ const concat = (parts: readonly Uint8Array[]): Uint8Array => {
 
 /**
  * The pixels as a PNG, each scaled to a `scale`×`scale` block; transparent pixels take
- * `background`. Throws past 256 colors, which a card never reaches.
+ * `background`, or with null stay transparent. Throws past 256 colors, which a card never reaches.
  */
-export const encodePng = (p: Pixels, scale: number, background: number): Uint8Array => {
-  const palette: number[] = []
-  const index = new Map<number, number>()
+export const encodePng = (p: Pixels, scale: number, background: number | null): Uint8Array => {
+  // Transparent is the palette's first entry when it is kept, so one alpha byte marks it.
+  const palette: number[] = background === null ? [0] : []
+  const index = new Map<number, number>(background === null ? [[TRANSPARENT, 0]] : [])
   const indexOf = (color: number): number => {
-    const c = color === TRANSPARENT ? background : color
+    const c = color === TRANSPARENT && background !== null ? background : color
     let i = index.get(c)
     if (i === undefined) {
       if (palette.length === 256) throw new Error('more than 256 colors')
@@ -191,6 +192,7 @@ export const encodePng = (p: Pixels, scale: number, background: number): Uint8Ar
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', header),
     chunk('PLTE', plte),
+    ...(background === null ? [chunk('tRNS', new Uint8Array([0]))] : []),
     chunk('IDAT', deflate(raw)),
     chunk('IEND', new Uint8Array(0)),
   ])

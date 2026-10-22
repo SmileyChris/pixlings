@@ -34,12 +34,15 @@ const BAND = {
   viewport: { columns: 110, rows: 40 },
 } as const
 
+/** What a terminal without images answers a blit to an Image: the engine's own words. */
+const ALT_DENY = 'the Image draws its alt here: the terminal draws neither kitty placeholder images (none) nor iTerm2 inline images (none)'
+
 type Ran = { argv: readonly string[]; init?: { stdin?: string; env?: Record<string, string> } }
 
 /** Answers what the pixling asks of the engine beneath it, and records host processes. */
-const host = (on: On, stored?: unknown) => {
+const host = (on: On, stored?: unknown, terminal: { hasImages: boolean } = { hasImages: true }, memory: Record<string, unknown> = {}) => {
   const clock = mock.clock(on, { now: Date.parse('2026-10-03T12:00:00Z') })
-  mock.store(on, stored === undefined ? {} : { pixling: stored })
+  mock.store(on, { ...(stored === undefined ? {} : { pixling: stored }), ...memory })
   mock.env(on, { OS: 'Windows_NT', USERPROFILE: 'C:\\Users\\tester' })
   const ran: Ran[] = []
   const toasts: string[] = []
@@ -59,10 +62,15 @@ const host = (on: On, stored?: unknown) => {
   })
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }) as never)
   on('ui.invalidate', () => ({ value: undefined }) as never)
-  on('ui.blit', () => ({ value: {} }) as never)
+  // A terminal without images refuses a blit to an Image in the engine's own words.
+  const blitted: string[] = []
+  on('ui.blit', ($, e) => {
+    blitted.push(e.key)
+    return { value: 'source' in e && !terminal.hasImages ? { deny: ALT_DENY } : {} } as never
+  })
   on('ui.render', () => ({ type: 'Box', props: {}, children: [] }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  return { clock, ran, toasts, copied }
+  return { clock, ran, toasts, copied, blitted }
 }
 
 type Engine = Parameters<TestBody>[0]
@@ -227,6 +235,27 @@ describe('the band', () => {
     expect(submitted.length).toBe(1)
     expect(submitted[0]).toMatch(/continue/)
     await ui.unmount()
+  })
+
+  test('the one-line band grows while it talks: a line past its end wraps under its start', { options: { band: 'minimal' } }, async ($, on) => {
+    const { clock } = host(on, DUCK, { hasImages: false })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(10_000)
+    // Every rename line has the name in it: twenty letters make it longer than the line's end.
+    await $.command.run({ command: 'pixling', args: 'name Bartholomew Quackington' } as never)
+    await clock.advance(10)
+    const spoken = (texts: string[]) => texts.filter(t => t.startsWith('  ') && !t.startsWith('  ⚡'))
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 60 }, surface: 'terminal' })
+    const said = spoken((await ui.findAll({ type: 'Text' })).map(t => t.text))
+    expect(said.length).toBeGreaterThan(1)
+    expect(said.join(' ')).toContain('Bartholomew')
+    await ui.unmount()
+    // No more rows than the band may take: one row, its line cut.
+    const short = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 60, maxRows: 1 }, surface: 'terminal' })
+    const one = spoken((await short.findAll({ type: 'Text' })).map(t => t.text))
+    expect(one).toHaveLength(1)
+    expect(one[0]).toMatch(/…$/)
+    await short.unmount()
   })
 
   test('/pixling pet and /pixling name change the pixling', async ($, on) => {
@@ -397,5 +426,157 @@ describe('the band', () => {
     expect(shown.text).toMatch(/🔒 wizard/)
     const again = await $.command.run({ command: 'pixling', args: 'wear' } as never)
     expect(again.text).toMatch(/● sprout/)
+  })
+})
+
+const imageOf = async (ui: { find: (q: never) => Promise<unknown> }, key: string) =>
+  (await ui.find({ type: 'Image', key } as never)) as { props: { columns: number; rows: number } } | undefined
+
+describe('the band at each size', () => {
+  test('compact starts as half blocks with the probe, and becomes a 10×4 picture once the terminal draws images', { options: { band: 'compact', roam: false } }, async ($, on) => {
+    const { clock, blitted: seen } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeDefined()
+    expect(await imageOf(ui, 'pixling-probe')).toBeDefined()
+    await clock.advance(1000)
+    expect(seen).toContain('pixling-probe')
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeUndefined()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 10, rows: 4 })
+    expect(await imageOf(ui, 'pixling-probe')).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: 'Quackers' })).toBeDefined()
+    // The frame clock swaps the picture, a PNG each frame.
+    await clock.advance(1000)
+    expect(seen).toContain('pixling-image')
+    await ui.unmount()
+  })
+
+  test('a terminal that drew images last time draws the picture from the first frame', { options: { band: 'compact' } }, async ($, on) => {
+    const { clock } = host(on, DUCK, { hasImages: true }, { hasImages: true })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    // Before any probe: no half blocks first.
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeUndefined()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ rows: 4 })
+    await ui.unmount()
+  })
+
+  test('without images compact stays half blocks', { options: { band: 'compact' } }, async ($, on) => {
+    const { clock } = host(on, DUCK, { hasImages: false })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(2000)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeDefined()
+    expect(await imageOf(ui, 'pixling-image')).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('slim without images is the line, its probe beside it', { options: { band: 'slim' } }, async ($, on) => {
+    const { clock } = host(on, DUCK, { hasImages: false })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(2000)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeUndefined()
+    expect(await imageOf(ui, 'pixling-image')).toBeUndefined()
+    expect(await imageOf(ui, 'pixling-probe')).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: ' · Lv 3' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('minimal where images draw is a 3×1 picture on the line', { options: { band: 'minimal' } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 3, rows: 1 })
+    expect(await ui.find({ type: 'Text', text: ' · Lv 3' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('in a picture it walks the same columns as in half blocks; on the line it stays put', { options: { band: 'compact' } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    // Half blocks first: the canvas and 30 columns to walk (a 110-column band).
+    expect((await ui.find({ type: 'Raster', key: 'pixling' } as never))?.props['columns']).toBe(52)
+    await clock.advance(1000)
+    await ui.redraw()
+    // The picture: its 10 columns and the same 30.
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 40, rows: 4 })
+    await ui.redraw({ ...BAND.props, maxRows: 1 })
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 3, rows: 1 })
+    await ui.unmount()
+  })
+
+  test('slim, too short for the card, reveals its line under the pointer', { options: { band: 'slim', roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(60_000)
+    await ui.redraw()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ rows: 2 })
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    expect(texts.some(t => t.startsWith('🔥 1-day streak · 🏅'))).toBe(true)
+    expect(await ui.find({ type: 'Raster', key: 'card-flame' } as never)).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('slim talks from its bottom row up: the picture keeps its two rows, the column shows all the speech', { options: { band: 'slim', roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(1000)
+    await $.command.run({ command: 'pixling', args: 'name Bartholomew Quackington' } as never)
+    await clock.advance(10)
+    await ui.redraw()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ rows: 2 })
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    // Under the name and XP's one row, with a bar on its right, uncut.
+    expect(texts.some(t => t.includes('Bartholomew'))).toBe(true)
+    expect(texts.some(t => t.endsWith('…'))).toBe(false)
+    expect(texts).toContain(' Lv 3  ')
+    expect(texts).toContain(' │')
+    expect(texts.some(t => t.startsWith('╭'))).toBe(false)
+    await ui.unmount()
+  })
+
+  test('a picture that draws its alt after all falls back to half blocks', { options: { band: 'compact' } }, async ($, on) => {
+    const terminal = { hasImages: true }
+    const { clock } = host(on, DUCK, terminal)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    expect(await imageOf(ui, 'pixling-image')).toBeDefined()
+    terminal.hasImages = false
+    await clock.advance(1000)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeDefined()
+    expect(await imageOf(ui, 'pixling-probe')).toBeDefined()
+    await ui.unmount()
+  })
+
+  test("short of rows, compact steps down to slim's picture", { options: { band: 'compact', roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, maxRows: 3 }, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 5, rows: 2 })
+    await ui.unmount()
   })
 })

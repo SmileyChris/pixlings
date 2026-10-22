@@ -107,7 +107,7 @@ All in `/config`, under Pixlings.
 |---|---|---|
 | `sound` | `all`, `important` (when Claude needs you, a long turn ends, a dangerous command runs or the limit hits), `off` | `all` |
 | `voice` | `animalese` (a made-up syllable per letter at the species' pitch), `speech` (the system voice reads the line), `off` | `animalese` |
-| `band` | `full`, `minimal` (one line: face, name, cache countdown), `off` | `full` |
+| `band` | `full` (9 rows), `compact` (4 rows), `slim` (2 rows), `minimal` (one line: face, name, cache countdown), `off`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen) `compact`, `slim` and `minimal` draw the pixling as a sharp picture; elsewhere `compact` is drawn as `full` and `slim` as `minimal`. A band short of rows steps down a size. | `full` |
 | `chatter` | `normal`, `quiet` (only failures, danger and when it needs you) | `normal` |
 | `quips` | `off`, `haiku` (now and then a one-liner written by Claude Haiku, with its cost shown) | `off` |
 | `notifications` | Desktop notifications | on |

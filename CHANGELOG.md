@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Band sizes.** `band` takes `compact` (4 rows) and `slim` (2 rows) alongside `full` and `minimal`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen), `compact`, `slim` and `minimal` draw the pixling as a sharp picture. Elsewhere `compact` is drawn as `full` and `slim` as `minimal`. A band with fewer rows than its size steps down a size instead of jumping straight to one line.
+
+### Changed
+
+- The full band still grows to fit its speech, but when it would need more rows than there is room for, it cuts the speech instead of folding to one line. `compact` and `slim` talk from their bottom row up, in lines with a bar on their right: the speech takes the vitals' rows, the name and XP share one row above it, and the band grows up only once the speech needs more rows than the picture has, up to the same limit. `minimal` wraps its speech under the start of the line.
+
 ## 0.3.0
 
 ### New

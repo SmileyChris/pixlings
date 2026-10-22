@@ -4,12 +4,14 @@ import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
 import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
 import { award, BADGES, countDay, earnedBadges, localDate, recapLine, touchDay } from './lib/badges.ts'
+import { bandRows, FACES, formFor, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
+import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
 import { adopt, cleanName, companionOf, configPath, speciesNamed } from './lib/buddy.ts'
 import type { Companion } from './lib/buddy.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from './lib/card.ts'
-import { CANVAS_W, HATCH_MS, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
+import { blank, CANVAS_W, HATCH_MS, layoutFor, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
 import type { Face, Hat, Icon, MiniView, Mood, Pixels } from './lib/canvas.ts'
 import { blockingWindow, clockTime, formatDuration, iconFor, isTestCommand, linesWritten, riskOf, runsGitCommit, testOutcome } from './lib/detect.ts'
 import type { LimitWindow, Risk } from './lib/detect.ts'
@@ -47,7 +49,7 @@ import {
   xpBar,
 } from './lib/progress.ts'
 import type { Day, Pixling, Stats, XpEvent } from './lib/progress.ts'
-import { base64, rasterOf, rowsFor, toSvg } from './lib/raster.ts'
+import { base64, rasterOf, toSvg } from './lib/raster.ts'
 import { isWalking, newWalker, roamRange, walk } from './lib/roam.ts'
 import type { RoamMode, Walker } from './lib/roam.ts'
 import { CARD_MAX, ROOM_EGG_KEY, ROOM_SPRITE_KEY, briefLine, cardModel, drawCard, drawRoom, personaLine, seatOf, tabOf } from './lib/room.ts'
@@ -92,10 +94,22 @@ const TTL_KEY = 'cacheTtl'
 /** How the card's text and the dex's begin and end: what their output rows are told apart by. */
 const CARD_END = '/pixling share saves its card.'
 const DEX_START = 'Pixledex: '
+/** Whether the terminal drew images last time: a band starts from it rather than the fallback. */
+const IMAGES_KEY = 'hasImages'
 /** The cache warning comes this long before it expires, and only over a context worth saving. */
 const COOLING_WARN_MS = 60_000
 const MIN_WARN_CONTEXT = 20_000
 const RASTER_KEY = 'pixling'
+/** The band's picture of the pixling, where the terminal draws images. */
+const IMAGE_KEY = 'pixling-image'
+/**
+ * A transparent cell beside a band that would be a picture where the terminal draws images: the
+ * frame clock blits it to learn when it can, as the engine says so only once it has asked.
+ */
+const PROBE_KEY = 'pixling-probe'
+const PROBE_PNG = base64(encodePng(blank(1, 1), 1, null))
+/** How the engine's refusal starts when an Image draws its alt: the terminal draws no images. */
+const ALT_DENY = 'the Image draws its alt here'
 const FRAME_MS = 100
 const DOZE_AFTER_MS = 15 * 60_000
 const LONG_TURN_MS = 45_000
@@ -131,21 +145,6 @@ const NOT_THE_PERSON: ReadonlySet<PromptOrigin['kind']> = new Set<PromptOrigin['
   'unclassified',
 ])
 
-const FACES: Readonly<Record<Mood, string>> = {
-  idle: '(•ᴗ•)',
-  working: '(•_•)…',
-  happy: '(^ᴗ^)',
-  celebrate: '\\(^ᴗ^)/',
-  sad: '(╥﹏╥)',
-  alarmed: '(°ロ°)!',
-  attention: '(•o•)!',
-  sleep: '(-ᴗ-)zz',
-  love: '(♡ᴗ♡)',
-  dizzy: '(@_@)',
-  walk: '(•ᴗ•)♪',
-  unimpressed: '(¬_¬)',
-}
-
 const TONE_COLOR: Readonly<Record<PixlingsVital['tone'], string | undefined>> = {
   good: '#6fdc8c',
   warn: '#ffc53d',
@@ -158,6 +157,8 @@ const TONE_COLOR: Readonly<Record<PixlingsVital['tone'], string | undefined>> = 
 const CARD_FILL = '#1a1b26'
 const CARD_FILL_PX = parseInt(CARD_FILL.slice(1), 16)
 const CARD_INK = '#c0caf5'
+/** The card's rows: its border, who it is, the badge shelf (icons of 7 pixels, 4 rows) and what it heard. */
+const CARD_ROWS = 8
 
 const isTtl = (value: unknown): value is Ttl => value === '5m' || value === '1h'
 
@@ -208,6 +209,10 @@ type Io = {
   toast: (text: string, timeoutMs: number) => void
   invalidate: () => void
   blit: (requestId: string, key: string, cells: string) => Promise<boolean>
+  /** Swaps a keyed Image's PNG (base64); why not when refused. */
+  blitImage: (requestId: string, key: string, png: string) => Promise<string | undefined>
+  /** Remembers whether the terminal draws images, for the next load to start from. */
+  saveImages: (value: boolean) => Promise<void>
   usage: () => Promise<readonly LimitWindow[]>
   submit: (text: string) => Promise<void>
   setVitals: (value: PixlingsVital[]) => Promise<void>
@@ -224,6 +229,7 @@ type Io = {
 export const register: Register = (on, options) => {
   const soundMode = String(options['sound'] ?? 'all')
   const bandMode = String(options['band'] ?? 'full')
+  const bandSize = isBandSize(bandMode) ? bandMode : 'full'
   const chatter = String(options['chatter'] ?? 'normal')
   const wantsNotifications = options['notifications'] !== false
   const wantsAutoContinue = options['autoContinue'] !== false
@@ -263,8 +269,14 @@ export const register: Register = (on, options) => {
   let napRetries = 0
   /** Counts cancellations: a wake that is still on its way checks it before it says continue. */
   let napEpoch = 0
+  /** The band drawing a live sprite (half blocks or a picture), by its request; the frame clock repaints it. */
   let bandId: string | null = null
-  let bandRows = 0
+  /** How the band last drew the pixling; null before it has. */
+  let bandForm: Form | null = null
+  /** The terminal draws images: learned from the probe, lost when a picture draws its alt. */
+  let hasImages = false
+  /** The band holding the probe, by its request. */
+  let probeId: string | null = null
   let lastFrame: Pixels | null = null
   let svgSeenAt = 0
   let lastInvalidate = 0
@@ -307,8 +319,6 @@ export const register: Register = (on, options) => {
   /** The conversation a nap fell asleep in, and when: it continues only that one, and not late. */
   let napSession: string | null = null
   let napSince = 0
-  /** The band had too few rows for the sprite and drew one line instead. */
-  let isCramped = false
 
   const species = (): Species => (pixling && speciesById(pixling.species)) || SPECIES[0]!
 
@@ -485,7 +495,7 @@ export const register: Register = (on, options) => {
   }
 
   const syncMinimal = async (): Promise<void> => {
-    if (!io || (bandMode !== 'minimal' && !isCramped)) return
+    if (!io || bandForm?.kind !== 'line') return
     const { mood } = currentMood(now())
     if (mood !== lastMoodShown) {
       lastMoodShown = mood
@@ -646,12 +656,26 @@ export const register: Register = (on, options) => {
     })
   }
 
+  /** The canvas's height in the pixling's gear: a tall hat adds headroom. */
+  const canvasH = (): number => layoutFor(species(), pixling ? gearOf(pixling).hat : null).h
+
   /**
-   * Columns the pixling may walk: the band's width past the canvas and the speech bubble. The
-   * squad's strip is taken out of it first, so minis widen the band only once that runs out.
+   * Canvas pixels to a column of the band as it draws (`walkScale`); 0 where it does not walk.
+   * Before the band has drawn, the sizes that start as half blocks walk.
    */
-  const rangeNow = (): number =>
-    wantsRoam && bandMode === 'full' && !isHatching(now()) ? Math.max(0, roamRange(bandColumns) - squadColumns(now())) : 0
+  const walkScaleNow = (): number =>
+    bandForm ? walkScale(bandForm, canvasH()) : bandSize === 'full' || bandSize === 'compact' ? 1 : 0
+
+  /**
+   * Pixels the pixling may walk: the band's columns past the canvas and the speech bubble, in the
+   * canvas's pixels. The squad's strip is taken out of it first, so minis widen the band only once
+   * that runs out.
+   */
+  const rangeNow = (): number => {
+    const scale = walkScaleNow()
+    if (!wantsRoam || bandMode === 'off' || scale === 0 || isHatching(now())) return 0
+    return Math.round(Math.max(0, roamRange(bandColumns) - squadColumns(now())) * scale)
+  }
 
   const roam = (at: number): void => {
     const range = rangeNow()
@@ -659,7 +683,8 @@ export const register: Register = (on, options) => {
     const { mood } = currentMood(at)
     const isHeld = held !== null && at < held.until
     const mode: RoamMode = nap || mood === 'sleep' || isHeld || compactingSince !== null ? 'stay' : isWorking ? 'home' : 'wander'
-    walker = walk(walker, range, mode, at, Math.random)
+    // A step is a column of the band, however many pixels that is.
+    walker = walk(walker, range, mode, at, Math.random, Math.max(1, Math.round(walkScaleNow())))
   }
 
   // Vitals --------------------------------------------------------------------------------
@@ -762,6 +787,23 @@ export const register: Register = (on, options) => {
     if (!(await port.blit(ROOM_ID, sprite.key, raster.cells))) roomSprite = null
   }
 
+  /** The frame as the band's picture: a PNG, base64, sized to the form's cells. */
+  const pictureSource = (frame: Pixels, form: { columns: number; rows: number }): string => {
+    const { pixels, scale } = pictureOf(frame, form)
+    return base64(encodePng(pixels, scale, null))
+  }
+
+  /** Asks whether the terminal draws images now; once it does, the band redraws as a picture. */
+  const probeImages = async (port: Io, requestId: string): Promise<void> => {
+    const deny = await port.blitImage(requestId, PROBE_KEY, PROBE_PNG)
+    if (deny === undefined) {
+      hasImages = true
+      probeId = null
+      await port.saveImages(true)
+      port.invalidate()
+    } else if (!deny.startsWith(ALT_DENY)) probeId = null
+  }
+
   const tick = async (): Promise<void> => {
     const port = io
     if (!port || !pixling) return
@@ -774,7 +816,8 @@ export const register: Register = (on, options) => {
       await warnCooling(t)
     }
     await paintRoom(port, t)
-    if (bandMode === 'minimal' || isCramped) {
+    if (probeId && ticks % 10 === 5) await probeImages(port, probeId)
+    if (bandForm?.kind === 'line') {
       await syncMinimal()
       return
     }
@@ -787,9 +830,18 @@ export const register: Register = (on, options) => {
       port.invalidate()
       return
     }
-    if (bandId && bandRows * 2 >= frame.h) {
+    if (bandId && bandForm?.kind === 'cells' && bandForm.rows * 2 >= frame.h) {
       const isShown = await port.blit(bandId, RASTER_KEY, rasterOf(frame).cells)
       if (!isShown) bandId = null
+    } else if (bandId && bandForm?.kind === 'image') {
+      const deny = await port.blitImage(bandId, IMAGE_KEY, pictureSource(frame, bandForm))
+      if (deny?.startsWith(ALT_DENY)) {
+        // The terminal draws none after all: the size's fallback, and the probe again.
+        hasImages = false
+        await port.saveImages(false)
+        port.invalidate()
+      }
+      if (deny) bandId = null
     }
     // Surfaces without Raster draw an SVG: redraw them a few times a second.
     if (t - svgSeenAt < 30_000 && t - lastInvalidate > 280) {
@@ -1281,6 +1333,10 @@ export const register: Register = (on, options) => {
       toast: (text, timeoutMs) => $.ui.toast(text, { timeoutMs }),
       invalidate: () => $.ui.invalidate('ui.render'),
       blit: async (requestId, key, cells) => (await $.ui.blit({ requestId, key, cells })).deny === undefined,
+      blitImage: async (requestId, key, png) => (await $.ui.blit({ requestId, key, source: { png } })).deny,
+      saveImages: async value => {
+        await $.store.set(IMAGES_KEY, value)
+      },
       usage: async () => (await $.session.usage()).rateLimits,
       submit: async text => {
         await $.prompt.submit({ text })
@@ -1355,6 +1411,9 @@ export const register: Register = (on, options) => {
       },
       complete: async request => $.model.complete(request),
     }
+    // A terminal that drew images last time draws the picture from the start, not the size's
+    // fallback first; one that turns out not to falls back as it would after any refusal.
+    hasImages = (await $.store.get(IMAGES_KEY)) === true
     // Sent away in an earlier session: it stays away until /pixling on.
     isAway = (await $.store.get(AWAY_KEY)) === true
     await buddyIo.setAway(isAway)
@@ -2171,13 +2230,15 @@ export const register: Register = (on, options) => {
     // Sent away: nothing of it shows until it is called back.
     if ((await read($, roomAway)) === true) {
       bandId = null
+      probeId = null
       return next(e)
     }
     const said = await read($, bubbleAtom)
     const napping = await read($, napAtom)
     const pieces = wantsVitals ? await read($, vitalsAtom) : []
     await read($, hatchAtom)
-    const persona = personaLine(await read($, roomPersona))
+    const rawPersona = await read($, roomPersona)
+    const persona = personaLine(rawPersona)
     bandColumns = e.props.bodyColumns
     const s = speciesById(v.speciesId) ?? SPECIES[0]!
     const color = hex(RARITY_COLOR[s.rarity])
@@ -2187,73 +2248,133 @@ export const register: Register = (on, options) => {
     // together and what it heard. The surface reveals it; no hook runs.
     const card = cardModel(p, persona, at)
 
-    const frame = bandMode === 'full' ? frameAt(at) : null
-    const width = frame ? Math.max(16, Math.min(56, e.props.bodyColumns - frame.w - 4)) : 0
-    // The card opens past the info rows, over the band's empty right, so its shelf has room.
-    const cardWidth = frame ? Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - frame.w - 4)) : 0
-    // The full band is as tall as the sprite or the column beside it; past the rows it may take,
-    // it folds into the one-line band.
-    const columnRows = 2 + (pieces.length > 0 ? 1 : 0) + (text ? 2 + Math.ceil(text.length / Math.max(1, width - 4)) : 0)
-    isCramped = frame !== null && Math.max(rowsFor(frame), columnRows) > e.props.maxRows
+    // The surface draws images: a terminal that said so. Elsewhere each size draws its fallback.
+    const isTerminal = e.surface === 'terminal'
+    let frame = frameAt(at)
+    let picked = pickForm(bandSize, frame, isTerminal && hasImages, e.props.maxRows)
+    // The walking strip widens the frame by its columns in the form's pixels: a band whose form
+    // walks at another scale than the last draws the frame again at the width that follows.
+    if (walkScale(picked, canvasH()) !== walkScaleNow()) {
+      bandForm = picked
+      // Its place was in the old scale's pixels: it starts again at home, beside the bubble.
+      walker = null
+      frame = frameAt(at)
+      picked = pickForm(bandSize, frame, isTerminal && hasImages, e.props.maxRows)
+    }
+    const form = picked
+    bandForm = form
+    // A size a picture would draw keeps the probe beside the band until the terminal says it can.
+    const wantsProbe = isTerminal && !hasImages && formFor(bandSize, frame, true).kind === 'image'
+    probeId = wantsProbe ? (e.requestId ?? null) : null
+    const probe = (Image: Elements['terminal']['Image']) =>
+      wantsProbe ? <Image key={PROBE_KEY} source={{ png: PROBE_PNG }} columns={1} rows={1} alt=" " /> : null
 
-    if (!frame || isCramped) {
-      bandId = null
+    if (form.kind === 'line' || form.rows === 1) {
+      const isPicture = form.kind === 'image'
+      bandId = isPicture ? (e.requestId ?? null) : null
+      lastFrame = isPicture ? frame : null
       const mood = (await read($, moodAtom)) as Mood
       const face = `${FACES[mood] ?? FACES.idle} `
+      const lead = isPicture ? form.columns + 1 : face.length
+      const before = lead + v.name.length + ` · Lv ${v.level}`.length + (pieces[0] ? pieces[0].text.length + 2 : 0)
+      // Speech that runs past the line wraps under its start, so the band grows while it talks,
+      // as far as the rows it may take; past those the last line is cut.
+      const speech = text ? lineSpeech(text, Math.max(8, e.props.bodyColumns - 1 - before - 2), e.props.maxRows) : []
       // The card's line goes in the room the line leaves, sized to it, so revealing it moves
       // nothing: a row that overflowed would squeeze the name.
-      const spare =
-        e.props.bodyColumns - 1 - face.length - v.name.length - ` · Lv ${v.level}`.length -
-        (pieces[0] ? pieces[0].text.length + 2 : 0) - (text ? text.length + 2 : 0)
-      const { Box, Text } = $.ui.resolve(e)
+      const spare = e.props.bodyColumns - 1 - before - (speech.length ? Math.max(...speech.map(line => line.length)) + 2 : 0)
+      const { Box, Text, Image } = $.ui.resolve(e) as Elements['terminal']
       return (
         <Box key="band" flexDirection="row">
-          <Text color={color}>{face}</Text>
+          {isPicture ? (
+            <Box marginRight={1}>
+              <Image key={IMAGE_KEY} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={1} alt={face.trim()} />
+            </Box>
+          ) : (
+            <Text color={color}>{face}</Text>
+          )}
           <Text bold>{v.name}</Text>
           <Text dimColor>{` · Lv ${v.level}`}</Text>
           {pieces[0] ? <Text color={TONE_COLOR[pieces[0].tone]} dimColor={pieces[0].tone === 'dim'}>{`  ${pieces[0].text}`}</Text> : null}
-          {text ? isCramped ? <Text wrap="truncate-end">{`  ${text}`}</Text> : <Text>{`  ${text}`}</Text> : null}
+          {speech.length === 1 ? <Text wrap="truncate-end">{`  ${speech[0]}`}</Text> : null}
+          {speech.length > 1 ? (
+            <Box flexDirection="column" flexShrink={1}>
+              {speech.map(line => (
+                <Text wrap="truncate-end">{`  ${line}`}</Text>
+              ))}
+            </Box>
+          ) : null}
           {spare >= 12 ? (
             <Box display="none" hover={{ display: 'flex' }} width={spare} flexShrink={0}>
               <Text dimColor wrap="truncate-end">{`  ${briefLine(p, persona, at)}`}</Text>
             </Box>
           ) : null}
+          {isTerminal ? probe(Image) : null}
         </Box>
       )
     }
 
     lastFrame = frame
     const stars = `${RARITY_STARS[s.rarity]}${v.isShiny ? ' ✦' : ''}`
+    const spriteColumns = form.kind === 'image' ? form.columns : frame.w
+    const width = Math.max(16, Math.min(56, e.props.bodyColumns - spriteColumns - 4))
+    const column = { width, said: text, vitals: pieces.map(piece => piece.text) }
+    // Half blocks grow to show the column whole while it talks; a picture talks from its bottom
+    // row up, growing only past its own rows. Quiet, none grows.
+    const rows = bandRows(form, column, e.props.maxRows)
+    const blocks = layoutInfo({ ...column, rows })
+    // The card opens past the info rows, over the band's empty right, so its shelf has room.
+    // A band too short for the card shows its line instead, as wide as the band, as the engine
+    // clips the reveal to the band's rows.
+    const isBrief = rows < CARD_ROWS
+    const cardWidth = isBrief
+      ? Math.max(width, e.props.bodyColumns - spriteColumns - 2)
+      : Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - spriteColumns - 4))
+
+    /** One part of a row in the column (see `layoutInfo`). */
+    const part = (Text: Kit['Text'], Button: Kit['Button'], piece: Part) => {
+      if (piece.kind === 'name') {
+        return [
+          <Text bold color={color}>{v.name}</Text>,
+          <Text dimColor wrap="truncate-end">{piece.isShort ? ` Lv ${v.level}  ` : ` Lv ${v.level} · ${s.name} ${stars}`}</Text>,
+        ]
+      }
+      if (piece.kind === 'xp') {
+        const bar = xpBar(v.xpInto, v.xpNeed, piece.width)
+        // Beside a small sprite the bar is lighter: upper half blocks, level with the digits beside
+        // them, or a line through the row's middle; the empty part dimmed.
+        const glyph = piece.bar === 'half' ? '▀' : piece.bar === 'line' ? '━' : null
+        const filled = bar.replace(/░/g, '').length
+        return [
+          glyph ? <Text color={color}>{glyph.repeat(filled)}</Text> : <Text color={color}>{bar}</Text>,
+          ...(glyph ? [<Text dimColor>{glyph.repeat(piece.width - filled)}</Text>] : []),
+          <Text dimColor>{` ${v.xpInto}/${v.xpNeed}  `}</Text>,
+          napping?.isAuto ? <Button key="cancel-nap" label="cancel auto-continue" plain onPress={() => void cancelNap()} /> : null,
+        ]
+      }
+      if (piece.kind === 'vitals') {
+        return pieces.slice(piece.from, piece.to).map((vital, i) => (
+          <Text color={TONE_COLOR[vital.tone]} dimColor={vital.tone === 'dim'} wrap="truncate-end">
+            {`${i > 0 ? ' · ' : ''}${vital.text}`}
+          </Text>
+        ))
+      }
+      return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
+    }
 
     const info = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], kit: RoomKit) => (
       <Box flexDirection="column" marginLeft={1} flexShrink={1} width={width}>
-        {text ? (
-          <Box borderStyle="round" borderColor={color} paddingX={1} width={width}>
-            <Text wrap="wrap">{text}</Text>
-          </Box>
-        ) : null}
-        <Box flexDirection="row">
-          <Text bold color={color}>
-            {v.name}
-          </Text>
-          <Text dimColor>{` Lv ${v.level} · ${s.name} ${stars}`}</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Text color={color}>{xpBar(v.xpInto, v.xpNeed, 12)}</Text>
-          <Text dimColor>{` ${v.xpInto}/${v.xpNeed}  `}</Text>
-          {napping?.isAuto ? (
-            <Button key="cancel-nap" label="cancel auto-continue" plain onPress={() => void cancelNap()} />
-          ) : null}
-        </Box>
-        {pieces.length > 0 ? (
-          <Box flexDirection="row" flexWrap="wrap">
-            {pieces.map((piece, i) => (
-              <Text color={TONE_COLOR[piece.tone]} dimColor={piece.tone === 'dim'}>
-                {`${i > 0 ? ' · ' : ''}${piece.text}`}
-              </Text>
-            ))}
-          </Box>
-        ) : null}
+        {blocks.map(block =>
+          block.kind === 'bubble' ? (
+            <Box borderStyle="round" borderColor={color} paddingX={1} width={width} flexDirection="column">
+              {block.lines.map(line => (
+                <Text>{line}</Text>
+              ))}
+            </Box>
+          ) : (
+            <Box flexDirection="row">{block.parts.flatMap(piece => part(Text, Button, piece))}</Box>
+          ),
+        )}
         {/* Opaque, with its own ink, so the rows it covers never show through, on a dark terminal or a light one. */}
         <Box
           position="absolute"
@@ -2263,25 +2384,40 @@ export const register: Register = (on, options) => {
           display="none"
           hover={{ display: 'flex' }}
           flexDirection="column"
-          borderStyle="round"
+          borderStyle={isBrief ? undefined : 'round'}
           borderColor={color}
           backgroundColor={CARD_FILL}
           paddingX={1}
         >
-          {drawCard(kit, card, cardWidth, CARD_FILL_PX, CARD_INK)}
+          {!isBrief
+            ? drawCard(kit, card, cardWidth, CARD_FILL_PX, CARD_INK)
+            : // The persona whole: the rows cut it, not the card's one-row cap.
+              lineSpeech(briefLine(p, personaLine(rawPersona, Infinity), at), cardWidth - 2, rows).map(line => (
+                <Text color={CARD_INK} wrap="truncate-end">
+                  {line}
+                </Text>
+              ))}
         </Box>
       </Box>
     )
 
     if (e.surface === 'terminal') {
-      const { Box, Text, Button, Raster } = $.ui.resolve(e)
+      const { Box, Text, Button, Raster, Image } = $.ui.resolve(e)
       bandId = e.requestId ?? null
+      if (form.kind === 'image') {
+        return (
+          <Box key="band" flexDirection="row" alignItems="flex-end">
+            <Image key={IMAGE_KEY} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={form.rows} alt=" " />
+            {info(Box, Text, Button, { Box, Text, Button, Raster })}
+          </Box>
+        )
+      }
       const raster = rasterOf(frame)
-      bandRows = raster.rows
       return (
         <Box key="band" flexDirection="row" alignItems="flex-end">
           <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} />
           {info(Box, Text, Button, { Box, Text, Button, Raster })}
+          {probe(Image)}
         </Box>
       )
     }

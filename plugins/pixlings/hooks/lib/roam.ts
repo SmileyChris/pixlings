@@ -35,19 +35,23 @@ export const newWalker = (range: number, now: number): Walker => ({
 
 export const isWalking = (w: Walker): boolean => w.target !== null && w.target !== w.x
 
-/** Moves the walker on to `now`: as many steps as the time since the last one allows. */
-export const walk = (w: Walker, range: number, mode: RoamMode, now: number, random: () => number): Walker => {
+/**
+ * Moves the walker on to `now`: as many steps as the time since the last one allows, each `stride`
+ * pixels (a column of the band, where its pixels are smaller than a cell).
+ */
+export const walk = (w: Walker, range: number, mode: RoamMode, now: number, random: () => number, stride = 1): Walker => {
   let x = Math.min(w.x, range)
   let target = w.target === null ? null : Math.min(w.target, range)
   let { restUntil, isFlipped, lastStepAt } = w
 
   if (mode === 'stay') return { ...w, x, target: null, lastStepAt: now }
   if (mode === 'home') target = range
-  else if (target === null && now >= restUntil && range >= 4) {
+  else if (target === null && now >= restUntil && range >= 4 * stride) {
     // Somewhere at least a few steps away, so a stroll reads as one.
+    const away = 4 * stride
     let pick = x
-    for (let tries = 0; tries < 8 && Math.abs(pick - x) < 4; tries++) pick = Math.floor(random() * (range + 1))
-    target = Math.abs(pick - x) >= 4 ? pick : null
+    for (let tries = 0; tries < 8 && Math.abs(pick - x) < away; tries++) pick = Math.floor(random() * (range + 1))
+    target = Math.abs(pick - x) >= away ? pick : null
   }
 
   // A walk starts now, however long the rest before it was.
@@ -57,7 +61,7 @@ export const walk = (w: Walker, range: number, mode: RoamMode, now: number, rand
     if (steps > 0) {
       const dir = Math.sign(target - x)
       isFlipped = dir < 0
-      x += dir * Math.min(steps, Math.abs(target - x))
+      x += dir * Math.min(steps * stride, Math.abs(target - x))
       lastStepAt += steps * STEP_MS
     }
   } else {

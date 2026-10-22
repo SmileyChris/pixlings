@@ -184,6 +184,15 @@ describe('walking', () => {
     expect(walk(w, 10, 'stay', 0, seeded(1)).x).toBe(10)
   })
 
+  test('a stride moves that many pixels a step, and never past the target', () => {
+    let w = { ...newWalker(40, 0), x: 0 }
+    w = walk(w, 40, 'home', 0, seeded(1), 3)
+    w = walk(w, 40, 'home', STEP_MS * 2, seeded(1), 3)
+    expect(w.x).toBe(6)
+    w = walk(w, 40, 'home', STEP_MS * 100, seeded(1), 3)
+    expect(w.x).toBe(40)
+  })
+
   test('wandering picks a spot, walks there, rests, and faces where it goes', () => {
     let w = newWalker(30, 0)
     w = walk(w, 30, 'wander', 10_000, seeded(4))

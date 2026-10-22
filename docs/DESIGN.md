@@ -32,7 +32,8 @@ up when it resets. It levels up and it is yours.
    rarity (common 50 %, uncommon 28 %, rare 14 %, epic 6.5 %, legendary 1.5 %) and a 1/64 shiny
    palette. It gets a random name; `/pixling name <name>` renames it.
 2. **The band.** An `AbovePrompt` band holds the animated sprite (a `Raster` of half-block cells,
-   ~10 fps via `$.ui.blit`), a speech bubble, and a line with name, level and XP bar.
+   or an `Image` where the terminal draws images, ~10 fps via `$.ui.blit`), a speech bubble, and a
+   line with name, level and XP bar. The `band` setting picks its size (see Band sizes).
 3. **Reactions.** Every relevant event maps to a mood, a line and a sound:
 
    | Event | Source | Mood |
@@ -120,6 +121,7 @@ plugins/pixlings/
     sprites.ts   species art (16×16 palette grids), palettes, anchors, voices
     canvas.ts    frame composition: body, eyes per mood, accessories, particles, mirroring
     raster.ts    pixel buffer → half-block cells → base64 RasterProps.cells
+    band.ts      the band's sizes: form (half blocks, picture, line), fallbacks, the info column
     brain.ts     mood state machine with priorities and hold times
     lines.ts     dialogue bank and templating
     detect.ts    risky commands, test runs, test outcome parsing, limit windows
@@ -154,6 +156,48 @@ A 22×18 px canvas, the 16×16 sprite at (3, 2). Each terminal cell holds two ve
 `▀` with fg = top and bg = bottom, `▄`/`█` where one or both match, and the terminal's default
 background (`0x01000000`) for transparency. 18 px → 9 rows. Eyes, mouth and accessories are drawn
 procedurally on per-species anchors, so one body serves every mood.
+
+## Band sizes
+
+`lib/band.ts` decides the band's rows (`bandRows`), and the column beside the sprite fits them.
+Quiet, every band keeps its own rows. While it talks it grows to show all the speech, up to
+`maxRows`, and past that the speech is cut. Half blocks give the column the rows it needs whole
+(`columnRows`), the bubble above the name, XP and vitals. A picture (`compact`, `slim`) talks
+from its bottom row up, in lines with a bar on their right: the speech takes the vitals' rows,
+then the name and XP share one row above it, and the band grows up only once the speech needs
+more rows than the picture has. The sprite stays at the bottom. The one-line band wraps its
+speech under the start of the line (`lineSpeech`).
+
+| `band` | Images drawn | No images |
+|---|---|---|
+| `full` | half blocks, 9 rows | half blocks, 9 rows |
+| `compact` | picture, 10×4 cells | as `full` |
+| `slim` | picture, 5×2 cells | as `minimal` |
+| `minimal` | 3×1 picture on the line | the line with a face |
+
+A band with fewer `maxRows` than its size takes steps down the list, never up. A picture's
+cells are worked out on the assumption that a cell is twice as tall as it is wide (the engine
+never says a cell's pixels). The frame is padded to that shape and sent as a transparent PNG,
+scaled up in whole pixels.
+
+The pixling walks the same spare columns at every size but `minimal`, whose picture sits on the
+line. The walker counts in canvas pixels, and `walkScale` converts: 1 per column in half blocks,
+2.25 at `compact`, 4.5 at `slim`. So the range and each step stay a column wide, and the strip
+widens the picture by those columns. When the scale changes (half blocks becoming a picture),
+the walker starts again at home.
+
+The engine says whether a terminal draws images only by refusing a blit to an `Image`
+(`the Image draws its alt here: …`), and it refuses that way until its own probe of the terminal
+has settled. So a size that would be a picture starts as its fallback, with a 1×1 transparent
+`Image` (the probe) beside it, which the frame clock blits once a second. The first accepted
+blit redraws the band as a picture. A picture refused with that reason later on goes back to the
+fallback and the probe.
+
+The column (`layoutInfo`) stacks the name, the XP bar and the vitals (which wrap to as many rows
+as they need), with speech above them. Speech goes in a bordered bubble in a tall band, and in
+quoted lines in a short one. When the rows run short, the vitals keep one row, then the name and
+XP share a row, then the vitals go, then the name and XP. After that the speech is cut: in a tall
+band inside the bubble, keeping the rows below it; in a short one across every row.
 
 ## Error handling
 

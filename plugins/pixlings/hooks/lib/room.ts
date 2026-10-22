@@ -168,13 +168,13 @@ const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 
 /** The most of a persona drawn: an adopted Buddy's personality runs to 280 characters. */
 export const PERSONA_MAX = 100
 
-/** The stored persona as one line to draw, cut at PERSONA_MAX characters; null when there is none. */
-export const personaLine = (persona: unknown): string | null => {
+/** The stored persona as one line to draw, cut at `max` characters; null when there is none. */
+export const personaLine = (persona: unknown, max = PERSONA_MAX): string | null => {
   if (typeof persona !== 'string') return null
   const line = persona.replace(/\s+/g, ' ').trim()
   if (!line) return null
   const chars = [...line]
-  return chars.length > PERSONA_MAX ? `${chars.slice(0, PERSONA_MAX - 1).join('').trimEnd()}…` : line
+  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : line
 }
 
 // The hover card -----------------------------------------------------------------------------

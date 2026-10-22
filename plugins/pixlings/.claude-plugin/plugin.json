@@ -38,9 +38,11 @@
     "band": {
       "type": "string",
       "title": "Band above the prompt",
-      "description": "full: the animated pixling. minimal: one line with a face. off: no band (sounds and notifications stay).",
+      "description": "full: the animated pixling, 9 rows. compact: 4 rows, drawn as a picture where the terminal draws images (kitty, Ghostty, iTerm2 fullscreen), else as full. slim: 2 rows of picture, else as minimal. minimal: one line, a tiny picture where the terminal draws images, else a face. off: no band (sounds and notifications stay).",
       "options": [
         "full",
+        "compact",
+        "slim",
         "minimal",
         "off"
       ],
