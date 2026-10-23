@@ -4,7 +4,7 @@ import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
 import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
 import { award, BADGES, countDay, earnedBadges, localDate, recapLine, touchDay } from './lib/badges.ts'
-import { bandRows, FACES, formFor, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
+import { bandRows, FACES, formFor, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
@@ -50,7 +50,7 @@ import {
 } from './lib/progress.ts'
 import type { Day, Pixling, Stats, XpEvent } from './lib/progress.ts'
 import { base64, rasterOf, toSvg } from './lib/raster.ts'
-import { isWalking, newWalker, roamRange, walk } from './lib/roam.ts'
+import { isWalking, newWalker, placeIn, rescale, roamRange, walk } from './lib/roam.ts'
 import type { RoamMode, Walker } from './lib/roam.ts'
 import { CARD_MAX, ROOM_EGG_KEY, ROOM_SPRITE_KEY, briefLine, cardModel, drawCard, drawRoom, personaLine, seatOf, tabOf } from './lib/room.ts'
 import type { RoomActions, RoomKit, RoomModel } from './lib/room.ts'
@@ -102,6 +102,12 @@ const MIN_WARN_CONTEXT = 20_000
 const RASTER_KEY = 'pixling'
 /** The band's picture of the pixling, where the terminal draws images. */
 const IMAGE_KEY = 'pixling-image'
+/**
+ * The picture's key carries its cells: a picture of another size is a new Image, placed afresh.
+ * A terminal keeps a virtual placement's cells from the first transmission of an image id, so the
+ * same key at a new size would draw the new PNG stretched into the old cells.
+ */
+const imageKey = (form: { columns: number; rows: number }): string => `${IMAGE_KEY}-${form.columns}x${form.rows}`
 /**
  * A transparent cell beside a band that would be a picture where the terminal draws images: the
  * frame clock blits it to learn when it can, as the engine says so only once it has asked.
@@ -230,6 +236,7 @@ export const register: Register = (on, options) => {
   const soundMode = String(options['sound'] ?? 'all')
   const bandMode = String(options['band'] ?? 'full')
   const bandSize = isBandSize(bandMode) ? bandMode : 'full'
+  const wantsAutoscale = options['autoscale'] !== false
   const chatter = String(options['chatter'] ?? 'normal')
   const wantsNotifications = options['notifications'] !== false
   const wantsAutoContinue = options['autoContinue'] !== false
@@ -647,7 +654,7 @@ export const register: Register = (on, options) => {
       icon: activeIcon,
       isCalm,
       width: CANVAS_W + range,
-      x: SPRITE_X + Math.min(w?.x ?? range, range),
+      x: SPRITE_X + (w ? placeIn(w, range) : range),
       isFlipped: isStepping ? (w?.isFlipped ?? false) : false,
       hasCap: isPlanning,
       isSweating: contextPercent !== null && contextPercent >= SWEAT_AT,
@@ -676,7 +683,10 @@ export const register: Register = (on, options) => {
   const rangeNow = (): number => {
     const scale = walkScaleNow()
     if (!wantsRoam || bandMode === 'off' || scale === 0 || isHatching(now())) return 0
-    return Math.round(Math.max(0, roamRange(bandColumns) - squadColumns(now())) * scale)
+    // A picture is narrower than the half blocks; the columns it leaves are walked, so the band
+    // stays as wide as in half blocks and the stats beside it stay put.
+    const spare = bandForm?.kind === 'image' ? CANVAS_W - imageGrid(blank(CANVAS_W, canvasH()), bandForm.rows).columns : 0
+    return Math.round(Math.max(0, roamRange(bandColumns) - squadColumns(now()) + spare) * scale)
   }
 
   const roam = (at: number): void => {
@@ -836,7 +846,7 @@ export const register: Register = (on, options) => {
       const isShown = await port.blit(bandId, RASTER_KEY, rasterOf(frame).cells)
       if (!isShown) bandId = null
     } else if (bandId && bandForm?.kind === 'image') {
-      const deny = await port.blitImage(bandId, IMAGE_KEY, pictureSource(frame, bandForm))
+      const deny = await port.blitImage(bandId, imageKey(bandForm), pictureSource(frame, bandForm))
       if (deny?.startsWith(ALT_DENY)) {
         // The terminal draws none after all: the size's fallback, and the probe again.
         hasImages = false
@@ -2230,6 +2240,8 @@ export const register: Register = (on, options) => {
     const v = await read($, view)
     const p = pixling
     if (e.props.hasSurvey || bandMode === 'off' || !v || !p || e.props.maxRows < 1) return next(e)
+    // Autoscaling keeps the band to a sixth of the terminal; `band` is then the largest size.
+    const maxRows = wantsAutoscale && e.viewport?.rows ? Math.max(1, Math.min(e.props.maxRows, Math.floor(e.viewport.rows / 6))) : e.props.maxRows
     // Sent away: nothing of it shows until it is called back.
     if ((await read($, roomAway)) === true) {
       bandId = null
@@ -2254,20 +2266,23 @@ export const register: Register = (on, options) => {
     // The surface draws images: a terminal that said so. Elsewhere each size draws its fallback.
     const isTerminal = e.surface === 'terminal'
     let frame = frameAt(at)
-    let picked = pickForm(bandSize, frame, isTerminal && hasImages, e.props.maxRows)
+    let picked = pickForm(bandSize, frame, isTerminal && hasImages, maxRows)
     // The walking strip widens the frame by its columns in the form's pixels: a band whose form
     // walks at another scale than the last draws the frame again at the width that follows.
     if (walkScale(picked, canvasH()) !== walkScaleNow()) {
+      const was = walkScaleNow()
       bandForm = picked
-      // Its place was in the old scale's pixels: it starts again at home, beside the bubble.
-      walker = null
+      const scale = walkScaleNow()
+      // Its place was in the old scale's pixels: the same columns from home in the new one's. A
+      // size that does not walk (the line) keeps nothing; back from it, it starts at home.
+      walker = walker && was > 0 && scale > 0 ? rescale(walker, was, scale) : null
       frame = frameAt(at)
-      picked = pickForm(bandSize, frame, isTerminal && hasImages, e.props.maxRows)
+      picked = pickForm(bandSize, frame, isTerminal && hasImages, maxRows)
     }
     const form = picked
     bandForm = form
     // A size a picture would draw keeps the probe beside the band until the terminal says it can.
-    const wantsProbe = isTerminal && !hasImages && formFor(bandSize, frame, true).kind === 'image'
+    const wantsProbe = isTerminal && !hasImages && pickForm(bandSize, frame, true, maxRows).kind === 'image'
     probeId = wantsProbe ? (e.requestId ?? null) : null
     const probe = (Image: Elements['terminal']['Image']) =>
       wantsProbe ? <Image key={PROBE_KEY} source={{ png: PROBE_PNG }} columns={1} rows={1} alt=" " /> : null
@@ -2282,7 +2297,7 @@ export const register: Register = (on, options) => {
       const before = lead + v.name.length + ` · Lv ${v.level}`.length + (pieces[0] ? pieces[0].text.length + 2 : 0)
       // Speech that runs past the line wraps under its start, so the band grows while it talks,
       // as far as the rows it may take; past those the last line is cut.
-      const speech = text ? lineSpeech(text, Math.max(8, e.props.bodyColumns - 1 - before - 2), e.props.maxRows) : []
+      const speech = text ? lineSpeech(text, Math.max(8, e.props.bodyColumns - 1 - before - 2), maxRows) : []
       // The card's line goes in the room the line leaves, sized to it, so revealing it moves
       // nothing: a row that overflowed would squeeze the name.
       const spare = e.props.bodyColumns - 1 - before - (speech.length ? Math.max(...speech.map(line => line.length)) + 2 : 0)
@@ -2291,7 +2306,7 @@ export const register: Register = (on, options) => {
         <Box key="band" flexDirection="row">
           {isPicture ? (
             <Box marginRight={1}>
-              <Image key={IMAGE_KEY} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={1} alt={face.trim()} />
+              <Image key={imageKey(form)} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={1} alt={face.trim()} />
             </Box>
           ) : (
             <Text color={color}>{face}</Text>
@@ -2324,7 +2339,7 @@ export const register: Register = (on, options) => {
     const column = { width, said: text, vitals: pieces.map(piece => piece.text) }
     // Half blocks grow to show the column whole while it talks; a picture talks from its bottom
     // row up, growing only past its own rows. Quiet, none grows.
-    const rows = bandRows(form, column, e.props.maxRows)
+    const rows = bandRows(form, column, maxRows)
     const blocks = layoutInfo({ ...column, rows })
     // The card opens past the info rows, over the band's empty right, so its shelf has room.
     // A band too short for the card shows its line instead, as wide as the band, as the engine
@@ -2410,7 +2425,7 @@ export const register: Register = (on, options) => {
       if (form.kind === 'image') {
         return (
           <Box key="band" flexDirection="row" alignItems="flex-end">
-            <Image key={IMAGE_KEY} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={form.rows} alt=" " />
+            <Image key={imageKey(form)} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={form.rows} flexShrink={0} alt=" " />
             {info(Box, Text, Button, { Box, Text, Button, Raster })}
           </Box>
         )
@@ -2418,7 +2433,7 @@ export const register: Register = (on, options) => {
       const raster = rasterOf(frame)
       return (
         <Box key="band" flexDirection="row" alignItems="flex-end">
-          <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} />
+          <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} flexShrink={0} />
           {info(Box, Text, Button, { Box, Text, Button, Raster })}
           {probe(Image)}
         </Box>

@@ -31,7 +31,7 @@ const pane = <S extends Surface>(surface: S, columns: number, isFocused = false)
       scroll: { offset: 0, bodyRows: 40 },
       view: {},
     },
-    viewport: { columns, rows: 40 },
+    viewport: { columns, rows: 60 },
   }) as const
 
 const BAND = {
@@ -45,7 +45,7 @@ const BAND = {
     scroll: { offset: 0, bodyRows: 20 },
     view: {},
   },
-  viewport: { columns: 110, rows: 40 },
+  viewport: { columns: 110, rows: 60 },
 } as const
 
 const printed = (command: string, args: string): string =>
@@ -61,7 +61,7 @@ const card = (command: string, args: string) =>
     component: 'CommandOutput',
     // What each printed: the card's line, the dex's count, or another answer.
     props: { command, args, text: printed(command, args), isErrored: false },
-    viewport: { columns: 100, rows: 40 },
+    viewport: { columns: 100, rows: 60 },
   }) as const
 
 const DUCK = {
@@ -416,7 +416,7 @@ describe('the band', () => {
       await ui.unmount()
     }
     // On a wide terminal it opens past the info rows, over the band's empty right.
-    const wide = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, bodyColumns: 160 }, viewport: { columns: 160, rows: 40 } })
+    const wide = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, bodyColumns: 160 }, viewport: { columns: 160, rows: 60 } })
     const wideTree = await wide.drawn()
     const opened = hoverReveal(wideTree)
     const column = elements(wideTree).find(n => (n.children ?? []).includes(opened as never))

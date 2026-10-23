@@ -31,7 +31,7 @@ const BAND = {
     scroll: { offset: 0, bodyRows: 20 },
     view: {},
   },
-  viewport: { columns: 110, rows: 40 },
+  viewport: { columns: 110, rows: 60 },
 } as const
 
 /** What a terminal without images answers a blit to an Image: the engine's own words. */
@@ -391,6 +391,20 @@ describe('the band', () => {
     await ui.unmount()
   })
 
+  test('a narrower window shrinks the walk: the band fits the new columns and the pixling stays on it', async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    // Long enough for a stroll away from home.
+    await clock.advance(30_000)
+    await ui.redraw({ ...BAND.props, bodyColumns: 80 })
+    await clock.advance(1000)
+    const raster = (await ui.find({ type: 'Raster' })) as { props: { columns: number; cells: string } } | undefined
+    expect(raster?.props.columns).toBe(22 + 8)
+    await ui.unmount()
+  })
+
   test('a line without a sound of its own is said in the pixling’s voice, made for that line', async ($, on) => {
     const { clock, ran } = host(on, DUCK)
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
@@ -429,8 +443,11 @@ describe('the band', () => {
   })
 })
 
-const imageOf = async (ui: { find: (q: never) => Promise<unknown> }, key: string) =>
-  (await ui.find({ type: 'Image', key } as never)) as { props: { columns: number; rows: number } } | undefined
+/** The Image with this key, or for the picture (`pixling-image`, keyed with its cells) the first whose key starts with it. */
+const imageOf = async (ui: { findAll: (q: never) => Promise<readonly { key?: string; props: Record<string, unknown> }[]> }, key: string) =>
+  (await ui.findAll({ type: 'Image' } as never)).find(e => e.key === key || (key === 'pixling-image' && e.key?.startsWith('pixling-image-'))) as
+    | { props: { columns: number; rows: number } }
+    | undefined
 
 describe('the band at each size', () => {
   test('compact starts as half blocks with the probe, and becomes a 10×4 picture once the terminal draws images', { options: { band: 'compact', roam: false } }, async ($, on) => {
@@ -449,7 +466,7 @@ describe('the band at each size', () => {
     expect(await ui.find({ type: 'Text', text: 'Quackers' })).toBeDefined()
     // The frame clock swaps the picture, a PNG each frame.
     await clock.advance(1000)
-    expect(seen).toContain('pixling-image')
+    expect(seen.some(k => k.startsWith('pixling-image-'))).toBe(true)
     await ui.unmount()
   })
 
@@ -502,7 +519,7 @@ describe('the band at each size', () => {
     await ui.unmount()
   })
 
-  test('in a picture it walks the same columns as in half blocks; on the line it stays put', { options: { band: 'compact' } }, async ($, on) => {
+  test('a picture band is as wide as the half-block band, so the stats stay put; on the line it stays put', { options: { band: 'compact' } }, async ($, on) => {
     const { clock } = host(on, DUCK)
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(3000)
@@ -511,8 +528,8 @@ describe('the band at each size', () => {
     expect((await ui.find({ type: 'Raster', key: 'pixling' } as never))?.props['columns']).toBe(52)
     await clock.advance(1000)
     await ui.redraw()
-    // The picture: its 10 columns and the same 30.
-    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 40, rows: 4 })
+    // The picture: its 10 columns, and the 12 the canvas no longer takes join the 30 to walk.
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 52, rows: 4 })
     await ui.redraw({ ...BAND.props, maxRows: 1 })
     expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 3, rows: 1 })
     await ui.unmount()
@@ -562,6 +579,8 @@ describe('the band at each size', () => {
     await ui.redraw()
     expect(await imageOf(ui, 'pixling-image')).toBeDefined()
     terminal.hasImages = false
+    // A pet changes the frame, so the next tick blits the picture and hears the refusal.
+    await $.command.run({ command: 'pixling', args: 'pet' } as never)
     await clock.advance(1000)
     await ui.redraw()
     expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeDefined()
@@ -577,6 +596,45 @@ describe('the band at each size', () => {
     await clock.advance(1000)
     await ui.redraw()
     expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 5, rows: 2 })
+    await ui.unmount()
+  })
+
+  test('a picture that changes size is a new Image, so the terminal places it afresh', { options: { band: 'compact', roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK, { hasImages: true }, { hasImages: true })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    const pictureKey = async () => (await ui.findAll({ type: 'Image' } as never)).map(e => e.key).find(k => k?.startsWith('pixling-image'))
+    const wide = await pictureKey()
+    expect(wide).toBeDefined()
+    await ui.redraw({ ...BAND.props, maxRows: 2 })
+    expect((await ui.findAll({ type: 'Image' } as never)).map(e => e.props['rows'])).toContain(2)
+    const short = await pictureKey()
+    expect(short).toBeDefined()
+    expect(short).not.toBe(wide)
+    await ui.unmount()
+  })
+
+  test('autoscale keeps the band to a sixth of the terminal: full steps down to compact on 24 rows', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, viewport: { columns: 110, rows: 24 }, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    expect((await imageOf(ui, 'pixling-image'))?.props).toMatchObject({ columns: 10, rows: 4 })
+    await ui.unmount()
+  })
+
+  test('autoscale off: full keeps its 9 rows on 24 rows', { options: { band: 'full', autoscale: false, roam: false } }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, viewport: { columns: 110, rows: 24 }, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    expect(await ui.find({ type: 'Raster', key: 'pixling' } as never)).toBeDefined()
+    expect(await imageOf(ui, 'pixling-image')).toBeUndefined()
     await ui.unmount()
   })
 })

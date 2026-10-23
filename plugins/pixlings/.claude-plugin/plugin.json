@@ -48,6 +48,12 @@
       ],
       "default": "full"
     },
+    "autoscale": {
+      "type": "boolean",
+      "title": "Autoscale the band",
+      "description": "The band takes at most a sixth of the terminal's rows, stepping down from the band size to one that fits. Off, the band keeps its size whatever the terminal's height.",
+      "default": true
+    },
     "chatter": {
       "type": "string",
       "title": "Chattiness",

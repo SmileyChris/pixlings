@@ -31,7 +31,7 @@ const BAND = {
   plugin: 'pixlings',
   component: 'AbovePrompt',
   props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 110, scroll: { offset: 0, bodyRows: 20 }, view: {} },
-  viewport: { columns: 110, rows: 40 },
+  viewport: { columns: 110, rows: 60 },
 } as const
 
 const room = (surface: 'terminal' | 'desktop' | 'vscode' | 'mobile') =>
@@ -41,7 +41,7 @@ const room = (surface: 'terminal' | 'desktop' | 'vscode' | 'mobile') =>
     component: 'Pane',
     requestId: 'pixling-room',
     props: { title: 'Pixling', isFocused: false, bodyColumns: 60, placement: 'inline', scroll: { offset: 0, bodyRows: 40 }, view: {} },
-    viewport: { columns: 60, rows: 40 },
+    viewport: { columns: 60, rows: 60 },
   }) as const
 
 type HostOptions = {

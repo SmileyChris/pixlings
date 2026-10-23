@@ -175,16 +175,22 @@ speech under the start of the line (`lineSpeech`).
 | `slim` | picture, 5×2 cells | as `minimal` |
 | `minimal` | 3×1 picture on the line | the line with a face |
 
-A band with fewer `maxRows` than its size takes steps down the list, never up. A picture's
+A band with fewer `maxRows` than its size takes steps down the list, never up. With `autoscale`
+(on by default) `maxRows` is first capped at a sixth of `viewport.rows`, so `band` is the largest
+size the terminal may show; off, the engine's `maxRows` alone. The probe is mounted for the size
+that cap picks, not the setting's, so a `full` band stepping down still learns whether the terminal
+draws pictures. A picture's
 cells are worked out on the assumption that a cell is twice as tall as it is wide (the engine
 never says a cell's pixels). The frame is padded to that shape and sent as a transparent PNG,
 scaled up in whole pixels.
 
-The pixling walks the same spare columns at every size but `minimal`, whose picture sits on the
-line. The walker counts in canvas pixels, and `walkScale` converts: 1 per column in half blocks,
-2.25 at `compact`, 4.5 at `slim`. So the range and each step stay a column wide, and the strip
-widens the picture by those columns. When the scale changes (half blocks becoming a picture),
-the walker starts again at home.
+The strip left of the column is as wide at every size but `minimal`, whose picture sits on the
+line: the half blocks' 22 columns plus the spare ones, so the stats stay put as the band changes
+height. A picture is narrower than the half blocks (10 columns at `compact`, 5 at `slim`), and
+the columns it leaves are walked too. The walker counts in canvas pixels, and `walkScale`
+converts: 1 per column in half blocks, 2.25 at `compact`, 4.5 at `slim`. So each step stays a
+column wide, and the strip widens the picture by the walked columns. When the scale changes
+(half blocks becoming a picture), the walker keeps its columns from home.
 
 The engine says whether a terminal draws images only by refusing a blit to an `Image`
 (`the Image draws its alt here: …`), and it refuses that way until its own probe of the terminal
@@ -192,6 +198,12 @@ has settled. So a size that would be a picture starts as its fallback, with a 1�
 `Image` (the probe) beside it, which the frame clock blits once a second. The first accepted
 blit redraws the band as a picture. A picture refused with that reason later on goes back to the
 fallback and the probe.
+
+The picture's `Image` is keyed with its cells (`pixling-image-10x4`), so a picture of another size
+is a new element and the engine gives the terminal a new image id and deletes the old one. With one
+key across sizes the id was reused, and a terminal that keeps a placement's cells from the first
+transmission drew every later picture stretched into them: cut off when the band narrowed, squashed
+when it widened.
 
 The column (`layoutInfo`) stacks the name, the XP bar and the vitals (which wrap to as many rows
 as they need), with speech above them. Speech goes in a bordered bubble in a tall band, and in

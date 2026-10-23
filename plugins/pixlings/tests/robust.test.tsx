@@ -21,7 +21,7 @@ const BAND = {
     scroll: { offset: 0, bodyRows: 20 },
     view: {},
   },
-  viewport: { columns: 110, rows: 40 },
+  viewport: { columns: 110, rows: 60 },
 } as const
 
 /**

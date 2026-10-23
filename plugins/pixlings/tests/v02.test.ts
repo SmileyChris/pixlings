@@ -8,7 +8,7 @@ import { linuxSpeaker, openArgv, speakable, windowsSpeech, writeBytesArgv } from
 import { adler32, crc32, deflate, encodePng } from '../hooks/lib/png.ts'
 import { emptyDay, hatchPixling, revive } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
-import { isWalking, MAX_ROAM, newWalker, roamRange, STEP_MS, walk } from '../hooks/lib/roam.ts'
+import { isWalking, MAX_ROAM, newWalker, placeIn, rescale, roamRange, STEP_MS, walk } from '../hooks/lib/roam.ts'
 import { SPECIES } from '../hooks/lib/sprites.ts'
 import { addTics, isEyeRoll, ticsIn, topTics } from '../hooks/lib/tics.ts'
 import { countdown, freshCache, hitPercent, minutesLeft, observe, remainingMs, tokens, TTL_MS, vitals } from '../hooks/lib/vitals.ts'
@@ -208,6 +208,34 @@ describe('walking', () => {
     expect(still.target).toBeNull()
     // A narrower band pulls the walker in.
     expect(walk(w, 10, 'stay', 0, seeded(1)).x).toBe(10)
+  })
+
+  test('a band that narrows and widens again keeps the walker its distance from home', () => {
+    // At home, pulled in to a band with no walk, then given the walk back: still at home.
+    let w = newWalker(30, 0)
+    w = walk(w, 0, 'stay', 0, seeded(1))
+    expect(w.x).toBe(0)
+    w = walk(w, 30, 'stay', 0, seeded(1))
+    expect(w.x).toBe(30)
+    // Mid-stroll, 5 from home: the wider band keeps it 5 from home.
+    w = walk({ ...newWalker(20, 0), x: 15 }, 30, 'stay', 0, seeded(1))
+    expect(w.x).toBe(25)
+    // Where it is drawn follows the band's width at once, before the next step.
+    expect(placeIn({ ...newWalker(20, 0), x: 15 }, 30)).toBe(25)
+    expect(placeIn({ ...newWalker(20, 0), x: 15 }, 3)).toBe(0)
+  })
+
+  test('a band that changes scale keeps the walker its distance from home, in columns', () => {
+    // 10 columns from home in half blocks (a pixel a column), heading 4 from home.
+    const w = { ...newWalker(30, 0), x: 20, target: 26 }
+    // Compact walks at 2.25 pixels a column: the same 30 columns are 68 pixels.
+    const c = rescale(w, 1, 2.25)
+    expect(c.range).toBe(68)
+    expect(c.x).toBe(68 - Math.round(10 * 2.25))
+    expect(c.target).toBe(68 - Math.round(4 * 2.25))
+    // And back.
+    const b = rescale(c, 2.25, 1)
+    expect(b).toMatchObject({ range: 30, x: 20, target: 26 })
   })
 
   test('a stride moves that many pixels a step, and never past the target', () => {

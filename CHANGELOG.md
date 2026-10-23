@@ -5,9 +5,14 @@
 ### New
 
 - **Band sizes.** `band` takes `compact` (4 rows) and `slim` (2 rows) alongside `full` and `minimal`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen), `compact`, `slim` and `minimal` draw the pixling as a sharp picture. Elsewhere `compact` is drawn as `full` and `slim` as `minimal`. A band with fewer rows than its size steps down a size instead of jumping straight to one line.
+- **Autoscale.** `autoscale` (on by default) keeps the band to a sixth of the terminal's rows, stepping down from `band`, now the largest size you'll accept, to the largest that fits: `full` is `compact` on a 24-row terminal and `slim` on 12. Off, the band keeps its size at any height.
 - **Calm.** Turn `calm` on and the pixling holds still while idle, working or asleep, still hopping, shaking and celebrating when something happens; it rests 30–90 s between strolls instead of 4–12 s; and the cache counts down in minutes (`⏳ cache 4m`) instead of seconds.
 
 ### Changed
+
+- Resizing the window no longer leaves the picture stretched, squashed or cut off. A picture of a new size is a new image to the terminal, placed afresh; before, the same image id was reused at every size, and a terminal that keeps the first placement's cells drew the new picture into the old ones. The sprite also never shrinks when the band is laid out narrower than it was drawn for: the column beside it truncates instead.
+- A band that narrows and widens again keeps the pixling its distance from home, beside the bubble, instead of leaving it at the far left until its next stroll.
+- The band is as wide at `compact` and `slim` as at `full`, so the stats beside the pixling stay put as the band changes height; the columns the smaller picture leaves are walked. A band that changes height keeps the pixling its columns from home, too.
 
 - The full band still grows to fit its speech, but when it would need more rows than there is room for, it cuts the speech instead of folding to one line. `compact` and `slim` talk from their bottom row up, in lines with a bar on their right: the speech takes the vitals' rows, the name and XP share one row above it, and the band grows up only once the speech needs more rows than the picture has, up to the same limit. `minimal` wraps its speech under the start of the line.
 

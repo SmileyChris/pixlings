@@ -16,6 +16,8 @@ export const MAX_ROAM = 30
 export type Walker = {
   /** The sprite's offset from the canvas's left edge, 0..range. */
   readonly x: number
+  /** The range `x` was last walked in: a band that changes width keeps the sprite its distance from home. */
+  readonly range: number
   readonly target: number | null
   readonly isFlipped: boolean
   readonly restUntil: number
@@ -30,6 +32,7 @@ export const roamRange = (bodyColumns: number): number =>
 
 export const newWalker = (range: number, now: number): Walker => ({
   x: range,
+  range,
   target: null,
   isFlipped: false,
   restUntil: now + REST_MIN_MS,
@@ -42,12 +45,31 @@ export const isWalking = (w: Walker): boolean => w.target !== null && w.target !
  * Moves the walker on to `now`: as many steps as the time since the last one allows, each `stride`
  * pixels (a column of the band, where its pixels are smaller than a cell). Calm, it rests longer.
  */
+/**
+ * Where `n` (the sprite's x or its target, in the walker's range) is in a band of `range`. Home is
+ * the right end, beside the bubble: a band of another width moves it, and the sprite with it.
+ */
+const inRange = (w: Walker, n: number, range: number): number => Math.max(0, Math.min(n + range - w.range, range))
+
+/** The sprite's x drawn in a band of `range`: it follows the width at once, before the next step. */
+export const placeIn = (w: Walker, range: number): number => inRange(w, w.x, range)
+
+/**
+ * The walker in a band that walks at another scale (pixels a column): the same columns from home,
+ * so a band that changes size keeps the pixling where it was, and heading where it was heading.
+ */
+export const rescale = (w: Walker, from: number, to: number): Walker => {
+  const range = Math.round((w.range / from) * to)
+  const fromHome = (n: number): number => Math.max(0, range - Math.round(((w.range - n) / from) * to))
+  return { ...w, range, x: fromHome(w.x), target: w.target === null ? null : fromHome(w.target) }
+}
+
 export const walk = (w: Walker, range: number, mode: RoamMode, now: number, random: () => number, stride = 1, isCalm = false): Walker => {
-  let x = Math.min(w.x, range)
-  let target = w.target === null ? null : Math.min(w.target, range)
+  let x = placeIn(w, range)
+  let target = w.target === null ? null : inRange(w, w.target, range)
   let { restUntil, isFlipped, lastStepAt } = w
 
-  if (mode === 'stay') return { ...w, x, target: null, lastStepAt: now }
+  if (mode === 'stay') return { ...w, x, range, target: null, lastStepAt: now }
   if (mode === 'home') target = range
   else if (target === null && now >= restUntil && range >= 4 * stride) {
     // Somewhere at least a few steps away, so a stroll reads as one.
@@ -80,5 +102,5 @@ export const walk = (w: Walker, range: number, mode: RoamMode, now: number, rand
     target = null
     if (mode === 'home') isFlipped = false
   }
-  return { x, target, isFlipped, restUntil, lastStepAt }
+  return { x, range, target, isFlipped, restUntil, lastStepAt }
 }
