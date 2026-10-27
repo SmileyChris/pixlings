@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { bandRows, blockRows, columnRows, formFor, lineSpeech, imageGrid, layoutInfo, packVitals, pickForm, pictureOf, walkScale, wrap } from '../hooks/lib/band.ts'
+import { bandPixels, bandRows, blockRows, columnRows, formFor, holdsFrame, lineSpeech, imageGrid, layoutInfo, packVitals, pickForm, pictureOf, walkScale, wrap } from '../hooks/lib/band.ts'
 import type { InfoBlock } from '../hooks/lib/band.ts'
 import { blank, CANVAS_H, CANVAS_W, TRANSPARENT } from '../hooks/lib/canvas.ts'
 import { encodePng } from '../hooks/lib/png.ts'
@@ -36,8 +36,10 @@ describe('the band at each size', () => {
     expect(formFor('minimal', FRAME, true)).toEqual({ kind: 'image', columns: 3, rows: 1 })
   })
 
-  test('without images, compact grows to the half blocks and slim and minimal are the line', () => {
-    expect(formFor('compact', FRAME, false)).toEqual({ kind: 'cells', rows: 9 })
+  test('without images, compact is a bust of half blocks and slim and minimal are the line', () => {
+    expect(formFor('compact', FRAME, false)).toEqual({ kind: 'cells', rows: 6, top: 2 })
+    // A hat keeps the headroom a bare head gives up.
+    expect(formFor('compact', HATTED, false)).toEqual({ kind: 'cells', rows: 8, top: 0 })
     expect(formFor('slim', FRAME, false)).toEqual({ kind: 'line', rows: 1 })
     expect(formFor('minimal', FRAME, false)).toEqual({ kind: 'line', rows: 1 })
   })
@@ -64,10 +66,34 @@ describe('the band at each size', () => {
     expect(pickForm('full', FRAME, true, 20)).toEqual({ kind: 'cells', rows: 9 })
     expect(pickForm('full', FRAME, true, 8)).toEqual({ kind: 'image', columns: 10, rows: 4 })
     expect(pickForm('full', FRAME, true, 3)).toEqual({ kind: 'image', columns: 5, rows: 2 })
-    expect(pickForm('full', FRAME, false, 8)).toEqual({ kind: 'line', rows: 1 })
+    expect(pickForm('full', FRAME, false, 8)).toEqual({ kind: 'cells', rows: 6, top: 2 })
+    expect(pickForm('full', HATTED, false, 9)).toEqual({ kind: 'cells', rows: 8, top: 0 })
+    expect(pickForm('full', FRAME, false, 5)).toEqual({ kind: 'line', rows: 1 })
     expect(pickForm('slim', FRAME, true, 20)).toEqual({ kind: 'image', columns: 5, rows: 2 })
-    expect(pickForm('compact', FRAME, false, 8)).toEqual({ kind: 'line', rows: 1 })
+    expect(pickForm('compact', FRAME, false, 5)).toEqual({ kind: 'line', rows: 1 })
     expect(pickForm('minimal', FRAME, true, 1)).toEqual({ kind: 'image', columns: 3, rows: 1 })
+  })
+
+  test('a bust is the frame less its legs and, bare-headed, its headroom: the face and the ears stay', () => {
+    const frame = blank()
+    // The sprite's first row sits at 2 and its last at 17; a hatted frame is the same two rows lower.
+    frame.px[2 * CANVAS_W + 3] = 0xff0000
+    frame.px[11 * CANVAS_W + 3] = 0x00ff00
+    frame.px[14 * CANVAS_W + 3] = 0x0000ff
+    const bust = bandPixels(formFor('compact', frame, false), frame)
+    expect([bust.w, bust.h]).toEqual([CANVAS_W, 12])
+    expect(bust.px[0 * CANVAS_W + 3]).toBe(0xff0000)
+    expect(bust.px[9 * CANVAS_W + 3]).toBe(0x00ff00)
+    expect([...bust.px].includes(0x0000ff)).toBe(false)
+    // The frame whole where a size keeps all of it.
+    expect(bandPixels(formFor('full', frame, false), frame)).toBe(frame)
+  })
+
+  test('a bust holds the frame it was cut for, and not a taller one', () => {
+    expect(holdsFrame(formFor('compact', FRAME, false), FRAME)).toBe(true)
+    expect(holdsFrame(formFor('compact', FRAME, false), HATTED)).toBe(false)
+    expect(holdsFrame(formFor('full', FRAME, false), FRAME)).toBe(true)
+    expect(holdsFrame(formFor('full', FRAME, false), HATTED)).toBe(false)
   })
 
   test("a picture is padded to its cells' shape, centred, and scaled up in whole pixels", () => {
@@ -162,6 +188,7 @@ describe('the column beside the sprite', () => {
     // Half blocks take the column whole; the line is the line's own.
     expect(bandRows(formFor('full', FRAME, true), column(SHORT), 20)).toBe(9)
     expect(bandRows(formFor('slim', FRAME, false), column(LONG), 20)).toBe(1)
+    expect(bandRows(formFor('compact', FRAME, false), column(null), 20)).toBe(6)
   })
 
   test('the one-line band wraps long speech under its start, as far as its rows, the last cut', () => {

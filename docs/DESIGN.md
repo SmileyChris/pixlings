@@ -171,9 +171,14 @@ speech under the start of the line (`lineSpeech`).
 | `band` | Images drawn | No images |
 |---|---|---|
 | `full` | half blocks, 9 rows | half blocks, 9 rows |
-| `compact` | picture, 10×4 cells | as `full` |
+| `compact` | picture, 10×4 cells | half blocks, the bust: 6 rows (8 with a hat) |
 | `slim` | picture, 5×2 cells | as `minimal` |
 | `minimal` | 3×1 picture on the line | the line with a face |
+
+The bust is the frame less its bottom 4 pixel rows (the legs and base; every species' face ends
+above them) and, bare-headed, its 2 rows of headroom; a hat keeps the headroom, hence 8 rows
+(`bustOf`, `bandPixels`). It is not centred on the face: the crop is the same for every species.
+A 5-row bust that followed each face was tried: it cut the rabbit's and capybara's ears.
 
 A band with fewer `maxRows` than its size takes steps down the list, never up. With `autoscale`
 (on by default) `maxRows` is first capped at a sixth of `viewport.rows`, so `band` is the largest

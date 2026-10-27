@@ -4,7 +4,7 @@
 
 ### New
 
-- **Band sizes.** `band` takes `compact` (4 rows) and `slim` (2 rows) alongside `full` and `minimal`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen), `compact`, `slim` and `minimal` draw the pixling as a sharp picture. Elsewhere `compact` is drawn as `full` and `slim` as `minimal`. A band with fewer rows than its size steps down a size instead of jumping straight to one line.
+- **Band sizes.** `band` takes `compact` (4 rows) and `slim` (2 rows) alongside `full` and `minimal`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen), `compact`, `slim` and `minimal` draw the pixling as a sharp picture. Elsewhere (inside tmux or Zellij, say) `compact` is a bust in half blocks, 6 rows, the pixling without its legs, and `slim` is drawn as `minimal`. A band with fewer rows than its size steps down a size instead of jumping straight to one line.
 - **Autoscale.** `autoscale` (on by default) keeps the band to a sixth of the terminal's rows, stepping down from `band`, now the largest size you'll accept, to the largest that fits: `full` is `compact` on a 24-row terminal and `slim` on 12. Off, the band keeps its size at any height.
 - **Calm.** Turn `calm` on and the pixling holds still while idle, working or asleep, still hopping, shaking and celebrating when something happens; it rests 30–90 s between strolls instead of 4–12 s; and the cache counts down in minutes (`⏳ cache 4m`) instead of seconds.
 

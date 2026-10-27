@@ -4,7 +4,7 @@ import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
 import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
 import { award, BADGES, countDay, earnedBadges, localDate, recapLine, touchDay } from './lib/badges.ts'
-import { bandRows, FACES, formFor, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
+import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
@@ -842,8 +842,8 @@ export const register: Register = (on, options) => {
       port.invalidate()
       return
     }
-    if (bandId && bandForm?.kind === 'cells' && bandForm.rows * 2 >= frame.h) {
-      const isShown = await port.blit(bandId, RASTER_KEY, rasterOf(frame).cells)
+    if (bandId && bandForm?.kind === 'cells' && holdsFrame(bandForm, frame)) {
+      const isShown = await port.blit(bandId, RASTER_KEY, rasterOf(bandPixels(bandForm, frame)).cells)
       if (!isShown) bandId = null
     } else if (bandId && bandForm?.kind === 'image') {
       const deny = await port.blitImage(bandId, imageKey(bandForm), pictureSource(frame, bandForm))
@@ -2430,7 +2430,7 @@ export const register: Register = (on, options) => {
           </Box>
         )
       }
-      const raster = rasterOf(frame)
+      const raster = rasterOf(bandPixels(form, frame))
       return (
         <Box key="band" flexDirection="row" alignItems="flex-end">
           <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} flexShrink={0} />
@@ -2441,9 +2441,10 @@ export const register: Register = (on, options) => {
     }
     svgSeenAt = at
     const { Box, Text, Button, Svg } = $.ui.resolve(e)
+    const drawn = bandPixels(form, frame)
     return (
       <Box key="band" flexDirection="row" alignItems="flex-end">
-        <Svg source={toSvg(frame, 4)} alt={`${v.name} the ${s.name}`} width={frame.w * 4} height={frame.h * 4} />
+        <Svg source={toSvg(drawn, 4)} alt={`${v.name} the ${s.name}`} width={drawn.w * 4} height={drawn.h * 4} />
         {info(Box, Text, Button, { Box, Text, Button, Svg })}
       </Box>
     )

@@ -2,7 +2,7 @@
 // draws one, or a face on one line), how many rows that takes, and what the column beside the
 // sprite holds in those rows. The rows are chosen first; the column fits them and never grows them.
 
-import { blank, TRANSPARENT } from './canvas.ts'
+import { blank, CANVAS_H, TRANSPARENT } from './canvas.ts'
 import type { Mood, Pixels } from './canvas.ts'
 import { rowsFor } from './raster.ts'
 
@@ -13,11 +13,11 @@ export const BAND_SIZES: readonly BandSize[] = ['full', 'compact', 'slim', 'mini
 export const isBandSize = (value: string): value is BandSize => (BAND_SIZES as readonly string[]).includes(value)
 
 /**
- * What draws the sprite: half blocks as tall as the frame, a picture over a block of cells, or no
- * sprite and one line with a face.
+ * What draws the sprite: half blocks as tall as the frame (or a bust of it, from pixel row `top`),
+ * a picture over a block of cells, or no sprite and one line with a face.
  */
 export type Form =
-  | { readonly kind: 'cells'; readonly rows: number }
+  | { readonly kind: 'cells'; readonly rows: number; readonly top?: number }
   | { readonly kind: 'image'; readonly columns: number; readonly rows: number }
   | { readonly kind: 'line'; readonly rows: 1 }
 
@@ -51,14 +51,41 @@ export const imageGrid = (frame: Pixels, rows: number): { columns: number; rows:
   rows,
 })
 
+/** The pixel rows of legs and base a bust leaves off: every species' face ends above them. */
+const BUST_CUT = 4
+/** The pixel rows above the sprite's first, which a bare head leaves off too: a hat needs them. */
+const HEADROOM = 2
+
 /**
- * What a size draws with: a picture where the terminal draws one. Without, compact grows to the
- * half blocks of full, and slim shrinks to the line of minimal, a face where the picture would be.
+ * The bust of a frame: the rows to draw from pixel row `top`. Its legs are left off, and a bare
+ * head's headroom; a frame taller than the bare canvas holds a hat, which keeps it.
+ */
+export const bustOf = (frame: Pixels): { top: number; rows: number } => {
+  const top = frame.h > CANVAS_H ? 0 : HEADROOM
+  return { top, rows: Math.ceil((frame.h - BUST_CUT - top) / 2) }
+}
+
+/** The frame as the form draws it: the whole of it, or its bust. */
+export const bandPixels = (form: Form, frame: Pixels): Pixels => {
+  if (form.kind !== 'cells' || form.top === undefined) return frame
+  const h = Math.min(form.rows * 2, frame.h - form.top)
+  const bust = blank(frame.w, h)
+  bust.px.set(frame.px.subarray(form.top * frame.w, (form.top + h) * frame.w))
+  return bust
+}
+
+/** Whether the form's rows hold this frame, as it was cut or taller by none. */
+export const holdsFrame = (form: Form, frame: Pixels): boolean =>
+  form.kind === 'cells' && (form.top === undefined ? form.rows * 2 >= frame.h : bustOf(frame).rows <= form.rows)
+
+/**
+ * What a size draws with: a picture where the terminal draws one. Without, compact is a bust of
+ * the half blocks of full, and slim shrinks to the line of minimal, a face where the picture would be.
  */
 export const formFor = (size: BandSize, frame: Pixels, hasImages: boolean): Form => {
   if (size === 'full') return { kind: 'cells', rows: rowsFor(frame) }
   if (hasImages) return { kind: 'image', ...imageGrid(frame, IMAGE_ROWS[size]) }
-  return size === 'compact' ? { kind: 'cells', rows: rowsFor(frame) } : LINE
+  return size === 'compact' ? { kind: 'cells', ...bustOf(frame) } : LINE
 }
 
 /** The setting's form, or where it needs more than `maxRows`, the first smaller size's that fits. */

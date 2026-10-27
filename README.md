@@ -107,7 +107,7 @@ All in `/config`, under Pixlings.
 |---|---|---|
 | `sound` | `all`, `important` (when Claude needs you, a long turn ends, a dangerous command runs or the limit hits), `off` | `all` |
 | `voice` | `animalese` (a made-up syllable per letter at the species' pitch), `speech` (the system voice reads the line), `off` | `animalese` |
-| `band` | `full` (9 rows), `compact` (4 rows), `slim` (2 rows), `minimal` (one line: face, name, cache countdown), `off`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen) `compact`, `slim` and `minimal` draw the pixling as a sharp picture; elsewhere `compact` is drawn as `full` and `slim` as `minimal`. With `autoscale` on, the largest size you'll accept. | `full` |
+| `band` | `full` (9 rows), `compact` (4 rows), `slim` (2 rows), `minimal` (one line: face, name, cache countdown), `off`. Where the terminal draws images (kitty, Ghostty, iTerm2 3.5+ fullscreen) `compact`, `slim` and `minimal` draw the pixling as a sharp picture; elsewhere `compact` is a 6-row bust in half blocks (the pixling without its legs) and `slim` is drawn as `minimal`. With `autoscale` on, the largest size you'll accept. | `full` |
 | `autoscale` | The band takes at most a sixth of the terminal's rows, stepping down from `band` to the largest size that fits (a `full` band is `compact` on a 24-row terminal, `slim` on 12). Off, the band keeps its size at any height. | `true` |
 | `chatter` | `normal`, `quiet` (only failures, danger and when it needs you) | `normal` |
 | `quips` | `off`, `haiku` (now and then a one-liner written by Claude Haiku, with its cost shown) | `off` |
