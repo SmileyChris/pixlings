@@ -430,16 +430,20 @@ describe('the band', () => {
     expect(ran.some(r => r.argv.join(' ').includes('MemoryStream'))).toBe(false)
   })
 
-  test('/pixling wear with no item shows the wardrobe and changes nothing', async ($, on) => {
+  test('/pixling wear with no item shows the wardrobe, only what it has, and changes nothing', async ($, on) => {
     const { clock } = host(on, { ...DUCK, xp: 200 })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(3000)
     const shown = await $.command.run({ command: 'pixling', args: 'wear' } as never)
     expect(shown.text).toContain('wardrobe')
     expect(shown.text).toMatch(/● sprout/)
-    expect(shown.text).toMatch(/🔒 wizard/)
+    // What it hasn't got stays a surprise: no names, only when the next hat comes.
+    expect(shown.text).not.toMatch(/shroom|wizard|monocle|chain/)
+    expect(shown.text).toContain('The next hat comes at level 4.')
     const again = await $.command.run({ command: 'pixling', args: 'wear' } as never)
     expect(again.text).toMatch(/● sprout/)
+    const locked = await $.command.run({ command: 'pixling', args: 'wear wizard' } as never)
+    expect(locked.text).toBe(`${DUCK.name} doesn't have "wizard". It can wear: sprout or none.`)
   })
 })
 

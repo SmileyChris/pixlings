@@ -5,7 +5,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CANVAS_H, CANVAS_W, renderFrame, TRANSPARENT } from '../plugins/pixlings/hooks/lib/canvas.ts'
-import type { Face, Hat, Mood, Pixels } from '../plugins/pixlings/hooks/lib/canvas.ts'
+import type { Face, Hat, Mood, Neck, Pixels } from '../plugins/pixlings/hooks/lib/canvas.ts'
+import { FACE_IDS, HAT_IDS, NECK_IDS } from '../plugins/pixlings/hooks/lib/gear.ts'
 import { checkSpecies, SPECIES } from '../plugins/pixlings/hooks/lib/sprites.ts'
 import { encodePng, fillRect, rgb } from './png.ts'
 import type { Rgb } from './png.ts'
@@ -77,20 +78,17 @@ const main = (): void => {
     console.log(`wrote ${file} (${img.w}×${img.h})`)
   }
 
-  const GEAR: { hat: Hat | null; face: Face | null }[] = [
-    { hat: 'sprout', face: null },
-    { hat: 'shroom', face: null },
-    { hat: null, face: 'shades' },
-    { hat: 'party', face: null },
-    { hat: 'crown', face: 'shades' },
-    { hat: 'halo', face: null },
-    { hat: 'wizard', face: null },
+  // Every hat, then every face piece and neck piece, one to a column.
+  const GEAR: { hat?: Hat; face?: Face; neck?: Neck }[] = [
+    ...HAT_IDS.map(hat => ({ hat })),
+    ...FACE_IDS.map(face => ({ face })),
+    ...NECK_IDS.map(neck => ({ neck })),
   ]
   const tall = (CANVAS_H + 6) * SCALE
   const img = rgb(cellW * GEAR.length, tall * SPECIES.length, BG)
   SPECIES.forEach((species, row) => {
-    GEAR.forEach(({ hat, face }, col) => {
-      const frame = renderFrame({ species, isShiny: false, mood: col % 2 ? 'happy' : 'idle', t, hat, face })
+    GEAR.forEach(({ hat, face, neck }, col) => {
+      const frame = renderFrame({ species, isShiny: false, mood: col % 2 ? 'happy' : 'idle', t, hat, face, neck })
       blitPixels(img, frame, col * cellW + SCALE, row * tall + (tall - frame.h * SCALE) - SCALE, SCALE)
     })
   })

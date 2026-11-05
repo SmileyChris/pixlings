@@ -6,7 +6,9 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { renderFrame, renderHatch, TRANSPARENT } from '../plugins/pixlings/hooks/lib/canvas.ts'
-import type { Hat, Mood, Pixels } from '../plugins/pixlings/hooks/lib/canvas.ts'
+import type { Face, Hat, Mood, Neck, Pixels } from '../plugins/pixlings/hooks/lib/canvas.ts'
+import { FACE_IDS, NECK_IDS } from '../plugins/pixlings/hooks/lib/gear.ts'
+import { UNLOCKS } from '../plugins/pixlings/hooks/lib/progress.ts'
 import { RARITY_COLOR, SPECIES } from '../plugins/pixlings/hooks/lib/sprites.ts'
 
 const BG = 0x1a1b26
@@ -30,14 +32,11 @@ const MOODS: { mood: Mood; label: string }[] = [
   { mood: 'walk', label: 'strolling' },
 ]
 
-const GEAR: { hat: Hat | null; label: string; shades?: boolean }[] = [
-  { hat: 'sprout', label: 'Lv 2' },
-  { hat: 'shroom', label: 'Lv 4' },
-  { hat: null, label: 'Lv 6', shades: true },
-  { hat: 'party', label: 'Lv 9' },
-  { hat: 'crown', label: 'Lv 12', shades: true },
-  { hat: 'halo', label: 'Lv 18' },
-  { hat: 'wizard', label: 'Lv 25' },
+// The hats at their levels, then the face gear and neckwear found between them.
+const GEAR: { hat?: Hat; face?: Face; neck?: Neck; label: string }[] = [
+  ...UNLOCKS.map(u => ({ hat: u.hat, label: `Lv ${u.level}` })),
+  ...FACE_IDS.map(face => ({ face, label: 'found' })),
+  ...NECK_IDS.map(neck => ({ neck, label: 'found' })),
 ]
 
 const clips: Clip[] = [
@@ -75,10 +74,10 @@ const clips: Clip[] = [
     name: 'gear',
     frames: 30,
     ms: 100,
-    columns: 7,
-    cells: GEAR.map(({ hat, label, shades }) => ({
+    columns: 6,
+    cells: GEAR.map(({ hat, face, neck, label }) => ({
       label,
-      at: t => renderFrame({ species: species('duck'), isShiny: false, mood: 'idle', t, hat, face: shades ? 'shades' : null }),
+      at: t => renderFrame({ species: species('duck'), isShiny: false, mood: 'idle', t, hat, face, neck }),
     })),
   },
   {

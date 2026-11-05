@@ -57,12 +57,14 @@ const BUST_CUT = 4
 const HEADROOM = 2
 
 /**
- * The bust of a frame: the rows to draw from pixel row `top`. Its legs are left off, and a bare
- * head's headroom; a frame taller than the bare canvas holds a hat, which keeps it.
+ * The bust of a frame: the rows to draw from pixel row `top`. Its legs are left off, with any
+ * neckwear hanging under them, and a bare head's headroom; a frame taller than the bare canvas
+ * above the art holds a hat, which keeps it.
  */
 export const bustOf = (frame: Pixels): { top: number; rows: number } => {
-  const top = frame.h > CANVAS_H ? 0 : HEADROOM
-  return { top, rows: Math.ceil((frame.h - BUST_CUT - top) / 2) }
+  const below = frame.below ?? 0
+  const top = frame.h - below > CANVAS_H ? 0 : HEADROOM
+  return { top, rows: Math.ceil((frame.h - below - BUST_CUT - top) / 2) }
 }
 
 /** The frame as the form draws it: the whole of it, or its bust. */

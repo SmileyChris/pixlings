@@ -4,6 +4,7 @@ import { CARD_BG, renderCard } from '../hooks/lib/card.ts'
 import { CANVAS_W, layoutFor, mirror, renderFrame, SPRITE_X, TRANSPARENT } from '../hooks/lib/canvas.ts'
 import type { Hat, Mood } from '../hooks/lib/canvas.ts'
 import { hasGlyph } from '../hooks/lib/font.ts'
+import { HAT_IDS } from '../hooks/lib/gear.ts'
 import { allLines, say, SPECIES_LINES } from '../hooks/lib/lines.ts'
 import type { LineKey } from '../hooks/lib/lines.ts'
 import { hatchPixling, roll, xpForLevel } from '../hooks/lib/progress.ts'
@@ -22,7 +23,7 @@ const mulberry32 = (seed: number) => () => {
 }
 
 const MOODS: Mood[] = ['idle', 'working', 'happy', 'celebrate', 'sad', 'alarmed', 'attention', 'sleep', 'love', 'dizzy', 'walk', 'unimpressed']
-const HATS: (Hat | null)[] = [null, 'sprout', 'shroom', 'party', 'crown', 'halo', 'wizard']
+const HATS: (Hat | null)[] = [null, ...HAT_IDS]
 const NEW = ['capybara', 'turtle', 'snail', 'penguin', 'goose', 'rabbit']
 
 /** The per-species hatch odds, in percent, that the README and the roll promise. */
@@ -52,7 +53,8 @@ const isInside = (s: Species, x: number, y: number): boolean => isOpaque(s, x, y
 const SENTINEL = 0x010200
 const probe = (s: Species): Species => {
   const colors = Object.fromEntries(Object.keys(s.palette).map((k, i) => [k, SENTINEL + i]))
-  return { ...s, id: `${s.id}~probe`, palette: colors, shiny: colors }
+  // The same id, so it wears the gear fitted for the species.
+  return { ...s, palette: colors, shiny: colors }
 }
 
 /** Every key a body pixel may show: a wiggling row shows any of its frames. */

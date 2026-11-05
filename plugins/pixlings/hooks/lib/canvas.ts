@@ -2,6 +2,7 @@
 // particles drawn for a mood at a moment. Pure and deterministic in `t`, so the README media
 // is rendered by this exact code.
 
+import { boxOf, drawGear, gearBottom, type Face, type GearId, type Hat, type Neck } from './gear.ts'
 import type { Point, Species } from './sprites.ts'
 
 export const CANVAS_W = 22
@@ -12,7 +13,13 @@ const SPRITE_Y = 2
 
 export const TRANSPARENT = -1
 
-export type Pixels = { readonly w: number; readonly h: number; readonly px: Int32Array }
+export type Pixels = {
+  readonly w: number
+  readonly h: number
+  readonly px: Int32Array
+  /** A pixling's frame: the rows under the art, room for neckwear that hangs past it. */
+  readonly below?: number
+}
 
 export type Mood =
   | 'idle'
@@ -30,9 +37,7 @@ export type Mood =
 
 export type Icon = 'read' | 'edit' | 'bash' | 'web' | 'agent' | 'test'
 
-export type Hat = 'sprout' | 'shroom' | 'party' | 'crown' | 'halo' | 'wizard'
-
-export type Face = 'shades'
+export type { Face, Hat, Neck } from './gear.ts'
 
 export type FrameInput = {
   readonly species: Species
@@ -42,6 +47,7 @@ export type FrameInput = {
   readonly t: number
   readonly hat?: Hat | null
   readonly face?: Face | null
+  readonly neck?: Neck | null
   readonly icon?: Icon | null
   /** Draw the cactus bloom and similar species-specific flourishes. */
   readonly isBlooming?: boolean
@@ -265,89 +271,38 @@ const drawCheeks = (p: Pixels, s: Species, ox: number, oy: number): void => {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Hats and face gear, anchored on the head's center column and top row.
-
-type Gear = { rows: readonly string[]; colors: Readonly<Record<string, number>>; lift: number }
-
-const HATS: Readonly<Record<Hat, Gear>> = {
-  sprout: {
-    rows: ['LL.LL', '.LGL.', '..G..'],
-    colors: { L: 0x8ee08a, G: 0x3f9a4a },
-    lift: 3,
-  },
-  shroom: {
-    rows: ['...W...', '.RRRRR.', 'RWRWRWR'],
-    colors: { R: 0xe8475f, W: 0xfff4f4 },
-    lift: 2,
-  },
-  party: {
-    rows: ['..Y..', '..P..', '.PBP.', '.BPB.', 'PBPBP'],
-    colors: { Y: 0xffe14d, P: 0xff5fa2, B: 0x5ad1ff },
-    lift: 4,
-  },
-  crown: {
-    rows: ['Y.Y.Y', 'YYYYY', 'YRYBY'],
-    colors: { Y: 0xffd23f, R: 0xff4d6d, B: 0x4dc3ff },
-    lift: 2,
-  },
-  halo: {
-    rows: ['.YYYYY.', 'Y.....Y', '.YYYYY.'],
-    colors: { Y: 0xffe98a },
-    lift: 5,
-  },
-  wizard: {
-    rows: ['....P..', '...PP..', '..PYP..', '..PPPP.', '.PPPPPP', 'BBBBBBBB'],
-    colors: { P: 0x7b4dff, Y: 0xffe14d, B: 0x4a2fb8 },
-    lift: 5,
-  },
-}
+// Gear: hats, face gear and neckwear, each in the box fitted for the species (gear.ts).
 
 const topRow = (s: Species): number => {
   const row = s.art.findIndex(line => /[^.]/.test(line))
   return row < 0 ? 0 : row
 }
 
-/** Where the sprite sits and how tall the canvas is, so a hat or a jump never clips. */
-export const layoutFor = (s: Species, hat?: Hat | null): { y: number; h: number } => {
-  const need = hat ? HATS[hat].lift - s.head[1] + (hat === 'halo' ? 1 : 0) : 0
+/** The highest sprite row a hat reaches: its box's top, and a row more for the halo's bob. */
+const hatTop = (s: Species, hat: Hat): number => boxOf(s, hat).y - (hat === 'halo' ? 1 : 0)
+
+/**
+ * Where the sprite sits and how tall the canvas is, so a hat, a jump or neckwear never clips: two
+ * rows more on top at a time while the hat reaches higher, and two below when the neckwear hangs
+ * past the art. `s` faces as drawn.
+ */
+export const layoutFor = (s: Species, hat?: Hat | null, neck?: Neck | null): { y: number; h: number } => {
+  const need = hat ? -hatTop(s, hat) : 0
   let y = SPRITE_Y
   while (y < need) y += 2
-  return { y, h: y + 16 }
+  const below = neck && gearBottom(s, neck) > 15 ? 2 : 0
+  return { y, h: y + 16 + below }
 }
 
 /** How far up the sprite may jump without leaving the canvas (hat, or thinking cap, included). */
 const headroom = (s: Species, y: number, hat?: Hat | null, hasCap = false): number => {
-  const hatTop = hasCap
-    ? s.head[1] - CAP_LIFT
-    : hat
-      ? s.head[1] - HATS[hat].lift - (hat === 'halo' ? 1 : 0)
-      : topRow(s)
-  return Math.max(0, y + Math.min(topRow(s), hatTop))
+  const top = hasCap ? s.head[1] - CAP_LIFT : hat ? hatTop(s, hat) : topRow(s)
+  return Math.max(0, y + Math.min(topRow(s), top))
 }
 
-const drawHat = (p: Pixels, s: Species, ox: number, oy: number, hat: Hat, t: number): void => {
-  const gear = HATS[hat]
-  const width = Math.max(...gear.rows.map(r => r.length))
-  const [hx, hy] = s.head
-  const bob = hat === 'halo' ? step(t, 500) % 2 : 0
-  stamp(p, ox + hx - Math.floor(width / 2), oy + hy - gear.lift - bob, gear.rows, gear.colors)
-}
-
-const drawShades = (p: Pixels, s: Species, ox: number, oy: number): void => {
-  const [w, h] = s.eyeSize
-  const left = s.eyes[0]
-  const right = s.eyes[s.eyes.length - 1]
-  if (!left || !right) return
-  const frame = 0x101018
-  const glint = 0x8fa3ff
-  const y = oy + left[1]
-  for (let x = ox + left[0] - 1; x <= ox + right[0] + w; x++) put(p, x, y, frame)
-  for (const [ex, ey] of s.eyes) {
-    for (let dy = 0; dy < h; dy++) {
-      for (let dx = -1; dx <= w; dx++) put(p, ox + ex + dx, oy + ey + dy, frame)
-    }
-    put(p, ox + ex, oy + ey, glint)
-  }
+/** Draws one piece of gear on the species as drawn (`s`), at the sprite's origin. */
+const wear = (p: Pixels, s: Species, id: GearId, isFlipped: boolean, isShiny: boolean, ox: number, oy: number, lift = 0): void => {
+  drawGear(s, id, isFlipped, (x, y, color) => put(p, ox + x, oy + y - lift, color), isShiny)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -359,6 +314,8 @@ const HEART = ['##.##', '#####', '.###.', '..#..']
 const SPARKLE = ['.#.', '#W#', '.#.']
 const CLOUD = ['...##.##...', '.#########.', '###########', '.#########.']
 const BANG = ['#', '#', '#', '.', '#']
+
+type Gear = { rows: readonly string[]; colors: Readonly<Record<string, number>>; lift: number }
 
 const ICONS: Readonly<Record<Icon, Gear>> = {
   read: {
@@ -446,14 +403,17 @@ const drawHearts = (p: Pixels, ox: number, oy: number, s: Species, t: number): v
   }
 }
 
+/** The rain falls behind the pixling; its cloud is drawn after, over any hat (drawCloud). */
 const drawRain = (p: Pixels, ox: number, s: Species, t: number): void => {
-  const [hx] = s.head
-  const x = ox + hx - 6
+  const x = ox + s.head[0] - 6
   for (let i = 0; i < 5; i++) {
     const fall = (step(t, 80) + i * 5) % 7
     put(p, x + 1 + i * 2, 4 + fall, TEAR)
   }
-  stamp(p, x, 0, CLOUD, { '#': 0x9aa5bd })
+}
+
+const drawCloud = (p: Pixels, ox: number, s: Species): void => {
+  stamp(p, ox + s.head[0] - 6, 0, CLOUD, { '#': 0x9aa5bd })
 }
 
 const drawBang = (p: Pixels, ox: number, oy: number, s: Species, t: number, color: number): void => {
@@ -828,11 +788,12 @@ const pose = (mood: Mood, t: number): Pose => {
   }
 }
 
-const mirrors = new Map<string, Species>()
+// By the species itself, not its id: a test's recolored copy is another species to mirror.
+const mirrors = new WeakMap<Species, Species>()
 
 /** The species facing the other way: art reversed, anchors moved to match. */
 export const mirror = (s: Species): Species => {
-  const cached = mirrors.get(s.id)
+  const cached = mirrors.get(s)
   if (cached) return cached
   const flip = (row: string): string => [...row].reverse().join('')
   const [w] = s.eyeSize
@@ -845,19 +806,23 @@ export const mirror = (s: Species): Species => {
     head: [16 - s.head[0], s.head[1]],
     wiggle: s.wiggle?.map(w2 => ({ row: w2.row, frames: w2.frames.map(flip) })),
   }
-  mirrors.set(s.id, m)
+  mirrors.set(s, m)
   return m
 }
+
+const KEPT_ON: ReadonlySet<Face> = new Set<Face>(['monocle', 'eyepatch'])
 
 /** Composes one frame of a pixling. */
 export const renderFrame = (input: FrameInput): Pixels => {
   const { mood, t } = input
   const s = input.isFlipped ? mirror(input.species) : input.species
-  const layout = layoutFor(s, input.hat)
+  const isFlipped = input.isFlipped === true
+  const layout = layoutFor(input.species, input.hat, input.neck)
   const width = input.width ?? CANVAS_W
   const squad = input.squad ?? []
   const hidden = input.hidden ?? 0
-  const p = blank(width + squadWidth(squad.length, hidden), layout.h)
+  const below = layout.h - layout.y - 16
+  const p: Pixels = below > 0 ? { ...blank(width + squadWidth(squad.length, hidden), layout.h), below } : blank(width + squadWidth(squad.length, hidden), layout.h)
   const spriteX = input.x ?? SPRITE_X
   const palette = input.isShiny ? s.shiny : s.palette
   const squishT = input.squishT ?? null
@@ -873,7 +838,7 @@ export const renderFrame = (input: FrameInput): Pixels => {
         ? { ...pose(mood, t), dy: 0 }
         : pose(mood, t)
   const { dx, eyes, mouth, hasCheeks } = look
-  const dy = Math.max(look.dy, -headroom(s, layout.y, input.hat, input.hasCap))
+  const dy = Math.max(look.dy, -headroom(input.species, layout.y, input.hat, input.hasCap))
   const ox = spriteX + dx
   const oy = layout.y + dy
   const eyeColor = (input.isShiny && s.shinyEyeColor) || s.eyeColor
@@ -885,26 +850,33 @@ export const renderFrame = (input: FrameInput): Pixels => {
   const layer = isScaled ? blank(p.w, p.h) : p
   drawBody(layer, s, ox, oy, palette, t)
   if (!isPressed) {
-    if (input.face === 'shades' && mood !== 'sleep' && mood !== 'sad') {
-      drawShades(layer, body, ox, oy)
-    } else {
-      drawEyes(layer, body, ox, oy, eyes, t)
-    }
+    // Glasses that hide the eyes come off asleep or sad, so the face still reads; the monocle and
+    // the eyepatch stay on. Sunglasses stand in for the eyes; the rest go over them.
+    const face = input.face && (KEPT_ON.has(input.face) || (mood !== 'sleep' && mood !== 'sad')) ? input.face : null
+    if (face !== 'shades') drawEyes(layer, body, ox, oy, eyes, t)
     drawMouth(layer, body, ox, oy, mouth)
     if (hasCheeks) drawCheeks(layer, s, ox, oy)
+    if (face) wear(layer, input.species, face, isFlipped, input.isShiny, ox, oy)
   }
+  if (input.neck) wear(layer, input.species, input.neck, isFlipped, input.isShiny, ox, oy)
 
   // The robot's antenna blinks while it thinks.
   if (!isScaled && s.id === 'robot' && (mood === 'working' || mood === 'attention') && step(t, 300) % 2 === 1) {
     put(p, ox + 7, oy, 0xfff1a8)
     put(p, ox + 8, oy, 0xfff1a8)
   }
+  // Sad, the rain cloud hangs in front of any hat, but behind the thinking cap.
+  const isRaining = !isScaled && mood === 'sad'
   if (input.hasCap) {
+    if (isRaining) drawCloud(p, spriteX, s)
     drawCap(layer, s, ox, oy, t)
-  } else if (input.isBlooming || (s.id === 'cactus' && (mood === 'celebrate' || mood === 'love'))) {
-    drawBloom(layer, ox, oy, s)
-  } else if (input.hat) {
-    drawHat(layer, s, ox, oy, input.hat, t)
+  } else {
+    if (input.isBlooming || (s.id === 'cactus' && (mood === 'celebrate' || mood === 'love'))) {
+      drawBloom(layer, ox, oy, s)
+    } else if (input.hat) {
+      wear(layer, input.species, input.hat, isFlipped, input.isShiny, ox, oy, input.hat === 'halo' ? step(t, 500) % 2 : 0)
+    }
+    if (isRaining) drawCloud(p, spriteX, s)
   }
 
   if (isScaled) {
