@@ -278,6 +278,27 @@ export const SPECIES_LINES: Partial<Record<string, Partial<Record<LineKey, reado
     idle: ['*thump thump* Hurry up!'],
     pet: ['*nose twitch*', '*happy binky*'],
   },
+  chonk: {
+    hello: ['Oh. You. *does not get up*'],
+    done: ['Done. Time for a sit.'],
+    testPass: ['Green. *settles in deeper*'],
+    idle: ['*loafs*', 'Still here. Still round.'],
+    pet: ['*rumbling purr*', '*flops over*'],
+  },
+  mushroom: {
+    hello: ['Oh, hello. I grew a little while you were gone.'],
+    lateNight: ['{time}. The dark is when I do my best growing.'],
+    testFail: ['Red tests. Something is rotting in there.'],
+    commit: ['Committed. The spores are out now.'],
+    pet: ['*puffs a little spore cloud*', '*cap wobbles*'],
+  },
+  octopus: {
+    hello: ['Hi! I have already opened eight tabs.'],
+    testFail: ['Red? Let me get all my arms on that.'],
+    done: ['Done, done, done, and done. Four more to go.'],
+    danger: ['{label}?! *inks everywhere*'],
+    pet: ['*curls a tentacle round your finger*', '*goes a happy shade of pink*'],
+  },
 }
 
 export type Slots = Readonly<Record<string, string | number | null | undefined>>

@@ -24,22 +24,25 @@ const mulberry32 = (seed: number) => () => {
 
 const MOODS: Mood[] = ['idle', 'working', 'happy', 'celebrate', 'sad', 'alarmed', 'attention', 'sleep', 'love', 'dizzy', 'walk', 'unimpressed']
 const HATS: (Hat | null)[] = [null, ...HAT_IDS]
-const NEW = ['capybara', 'turtle', 'snail', 'penguin', 'goose', 'rabbit']
+const NEW = ['capybara', 'turtle', 'snail', 'penguin', 'goose', 'rabbit', 'chonk', 'mushroom', 'octopus']
 
 /** The per-species hatch odds, in percent, that the README and the roll promise. */
 const ODDS: Readonly<Record<string, number>> = {
-  blip: 10,
-  duck: 10,
-  cat: 10,
-  snail: 10,
-  rabbit: 10,
-  robot: 7,
-  cactus: 7,
-  capybara: 7,
-  penguin: 7,
-  owl: 14 / 3,
-  axolotl: 14 / 3,
-  turtle: 14 / 3,
+  blip: 50 / 6,
+  duck: 50 / 6,
+  cat: 50 / 6,
+  snail: 50 / 6,
+  rabbit: 50 / 6,
+  chonk: 50 / 6,
+  robot: 28 / 5,
+  cactus: 28 / 5,
+  capybara: 28 / 5,
+  penguin: 28 / 5,
+  mushroom: 28 / 5,
+  owl: 14 / 4,
+  axolotl: 14 / 4,
+  turtle: 14 / 4,
+  octopus: 14 / 4,
   ghost: 3.25,
   goose: 3.25,
   dragon: 1.5,
@@ -64,9 +67,9 @@ const keysAt = (s: Species, x: number, y: number): string[] => {
 }
 
 describe('the new species', () => {
-  test('fifteen clean species, the dragon the only legendary', () => {
-    expect(SPECIES.length).toBe(15)
-    expect(new Set(SPECIES.map(s => s.id)).size).toBe(15)
+  test('eighteen clean species, the dragon the only legendary', () => {
+    expect(SPECIES.length).toBe(18)
+    expect(new Set(SPECIES.map(s => s.id)).size).toBe(18)
     for (const id of NEW) expect(SPECIES.some(s => s.id === id)).toBe(true)
     for (const s of SPECIES) {
       expect(checkSpecies(s)).toEqual([])

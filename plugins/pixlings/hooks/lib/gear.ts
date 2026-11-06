@@ -71,6 +71,7 @@ export const HATS: Readonly<Record<Hat, HatArt>> = {
     rows: ['W.....W', 'W.SSS.W', 'WSSHSSW', 'GGGGGGG'],
     colors: { W: 0xf4f1e6, S: 0x9aa3b5, H: 0xe6e9f2, G: 0xb8862b },
     lift: 3,
+    edges: 1,
   },
   tophat: { rows: ['.KKKKK.', '.KHKKK.', '.KHKKK.', '.RRRRR.', 'KKKKKKK'], colors: { K: 0x2e2e3e, H: 0x4a4a60, R: 0xd8344a }, lift: 4 },
   grad: { rows: ['HHHHHHHHH', '..KKKKK.Y', '..KKKKK.Y'], colors: { H: 0x4a4a60, K: 0x2e2e3e, Y: 0xffd23f }, lift: 2, edges: 2 },
@@ -129,7 +130,9 @@ const WHITE = 0xffffff
 const CREAM = 0xf4f1e6
 
 /** On a shiny body the fitted metal can vanish or clash: these species wear another. */
-const SHINY_METAL: Readonly<Record<string, Metal>> = { robot: 'silver', capybara: 'gold' }
+const SHINY_METAL: Readonly<Record<string, Metal>> = { robot: 'silver', capybara: 'gold', chonk: 'copper' }
+/** Likewise the fitted cloth of a bow tie or bandana. */
+const SHINY_CLOTH: Readonly<Record<string, Cloth>> = { octopus: 'red' }
 
 const metal = (it: Box): readonly [number, number, number] => METALS[it.metal ?? 'gold']
 const cloth = (it: Box): readonly [number, number, number] => CLOTHS[it.color ?? 'red']
@@ -339,12 +342,14 @@ const eyeXs = (s: Species, isFlipped: boolean): number[] =>
  * coordinates as seen. Walking left, gear mirrors with the sprite, except: hats, sunglasses, the
  * scarf and the bandana slide to the mirrored box unflipped; the monocle stays on the pixling's
  * own left eye and the eyepatch on its right, keeping their shape; the medal mirrors but keeps
- * blue on the left strap and red on the right. Shiny, a few species swap the metal (SHINY_METAL).
+ * blue on the left strap and red on the right. Shiny, a few species swap the metal or the cloth
+ * (SHINY_METAL, SHINY_CLOTH).
  */
 export const drawGear = (s: Species, id: GearId, isFlipped: boolean, put: Put, isShiny = false): void => {
   const fitted = boxOf(s, id)
   const shinyMetal = isShiny && fitted.metal ? SHINY_METAL[s.id] : undefined
-  const it = shinyMetal ? { ...fitted, metal: shinyMetal } : fitted
+  const shinyCloth = isShiny && fitted.color ? SHINY_CLOTH[s.id] : undefined
+  const it = { ...fitted, ...(shinyMetal && { metal: shinyMetal }), ...(shinyCloth && { color: shinyCloth }) }
   const draw = isHat(id) ? (b: Box, p: Put) => drawHat(id, b, p) : DRAW[id]
   if (!isFlipped) {
     draw(it, put)

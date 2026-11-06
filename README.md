@@ -28,9 +28,9 @@ Start a new Claude Code session and an egg hatches. Every setting has a default,
 
 ## Meet yours
 
-<p align="center"><img src="docs/media/roster.gif" width="100%" alt="The fifteen species: blip, duck, cat, snail, rabbit, robot, cactus, capybara, penguin, owl, axolotl, turtle, ghost, goose and dragon"></p>
+<p align="center"><img src="docs/media/roster.gif" width="100%" alt="The species: blip, duck, cat, snail, rabbit, robot, cactus, capybara, penguin, owl, axolotl, turtle, ghost, goose and dragon"></p>
 
-Fifteen species in five rarities, from the five commons (half of all eggs) to a legendary dragon (1.5%). Shinies aren't rolled at hatch: each time your pixling's XP passes another 1,000, there's a 1% chance it lays a shiny egg, and the next egg you hatch is shiny. The card shows when it was laid, once it has been (about one pixling in nine by level 30, two in three by level 99). Each one hatches with a personality of its own, and an adopted Buddy keeps the one it had.
+Eighteen species in five rarities, from the six commons (half of all eggs) to a legendary dragon (1.5%). Shinies aren't rolled at hatch: each time your pixling's XP passes another 1,000, there's a 1% chance it lays a shiny egg, and the next egg you hatch is shiny. The card shows when it was laid, once it has been (about one pixling in nine by level 30, two in three by level 99). Each one hatches with a personality of its own, and an adopted Buddy keeps the one it had.
 
 <p align="center">
   <img src="docs/media/hatch.gif" width="32%" alt="An egg wobbles, cracks and flashes gold, and a legendary dragon hatches">

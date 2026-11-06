@@ -100,7 +100,7 @@ describe('gear', () => {
     expect(pixelsOf(blip, 'visor', true).map(([x, y, c]) => `${15 - x},${y},${c}`).sort()).toEqual(visor.map(([x, y, c]) => `${x},${y},${c}`).sort())
   })
 
-  test('shiny, the robot wears silver and the capybara gold', () => {
+  test('shiny, the robot wears silver, the capybara gold, the chonk copper, the octopus a red bow tie', () => {
     const colorsOf = (id: string, isShiny: boolean): Set<number> => {
       const out = new Set<number>()
       drawGear(byId(id), 'chain', false, (_x, _y, c) => out.add(c), isShiny)
@@ -111,6 +111,15 @@ describe('gear', () => {
     expect(colorsOf('capybara', false).has(0xe6e9f2)).toBe(true)
     expect(colorsOf('capybara', true).has(0xf2c14e)).toBe(true)
     expect([...colorsOf('blip', true)]).toEqual([...colorsOf('blip', false)])
+    // The chonk's shiny is gold, so its gold turns copper; the octopus's blue bow tie turns red.
+    expect(colorsOf('chonk', true).has(0xe8742a)).toBe(true)
+    const tie = (isShiny: boolean) => {
+      const out = new Set<number>()
+      drawGear(byId('octopus'), 'bowtie', false, (_x, _y, c) => out.add(c), isShiny)
+      return out
+    }
+    expect(tie(false).has(0x4d7cff)).toBe(true)
+    expect(tie(true).has(0xd8344a)).toBe(true)
   })
 
   test('the monocle and the eyepatch stay on asleep; glasses that hide the eyes come off', () => {
