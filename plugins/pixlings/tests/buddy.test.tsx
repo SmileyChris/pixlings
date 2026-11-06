@@ -3,7 +3,7 @@ import type { TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { test } from './kit.ts'
-import { adopt, cleanName, companionOf, configPath, epochMs, speciesNamed } from '../hooks/lib/buddy.ts'
+import { adopt, buddyBody, cleanName, companionOf, configPath, epochMs, fnv1a, speciesInText, wyhash } from '../hooks/lib/buddy.ts'
 import { oneLine, personaFor, personasOf, TEMPLATE_MAX } from '../hooks/lib/persona.ts'
 import { daysTogether, hatchPixling, mergeSave, rehatch, revive } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
@@ -208,11 +208,56 @@ const continues = (submitted: string[]): string[] => submitted.filter(t => /cont
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 
 describe('reading the old /buddy', () => {
-  test('only the name, personality and hatch time are kept from the config file', () => {
+  test('only the name, personality, hatch time and the rolled body are kept from the config file', () => {
     const found = companionOf(CONFIG)
-    expect(found).toEqual({ name: 'Pebblet', personality: COMPANION.personality, hatchedAt: 1_767_225_600_000 })
-    expect(Object.keys(found ?? {}).sort()).toEqual(['hatchedAt', 'name', 'personality'])
+    expect(found).toEqual({ name: 'Pebblet', personality: COMPANION.personality, hatchedAt: 1_767_225_600_000, species: 'octopus', isShiny: false })
+    expect(Object.keys(found ?? {}).sort()).toEqual(['hatchedAt', 'isShiny', 'name', 'personality', 'species'])
+    // The account id is hashed, never kept.
     for (const leak of LEAKS) expect(JSON.stringify(found)).not.toContain(leak)
+  })
+
+  test('the body is rolled as /buddy rolled it: Bun.hash on the native install, FNV-1a on npm', () => {
+    // Bun.hash's own answers, read from Bun.
+    const BUN: Record<string, bigint> = {
+      '': 0x409638ee2bde459n,
+      a: 0x28d2053309d28531n,
+      abc: 0x2a4f1d7cb516c72n,
+      'friend-2026-401': 0xc05e5790d10b440en,
+      'acc-123friend-2026-401': 0x46e0cb9bdf5e1fb5n,
+      '00000000-0000-4000-8000-000000000000friend-2026-401': 0x85ae952dce654313n,
+      ['x'.repeat(100)]: 0xfc0f0b62222f49c5n,
+    }
+    for (const [text, hash] of Object.entries(BUN)) expect(wyhash(text)).toBe(hash)
+    expect(fnv1a('')).toBe(2166136261)
+    expect(fnv1a('a')).toBe(0xe40c292c)
+    expect(buddyBody('acc-123', true)).toEqual({ species: 'octopus', isShiny: false })
+    expect(buddyBody('acc-123', false)).toEqual({ species: 'axolotl', isShiny: false })
+    const withMethod = (installMethod: string) => companionOf(JSON.stringify({ installMethod, oauthAccount: { accountUuid: 'acc-123' }, companion: COMPANION }))?.species
+    expect(withMethod('native')).toBe('octopus')
+    expect(withMethod('global')).toBe('axolotl')
+    // No account: the install's own id, else 'anon', as /buddy did.
+    expect(companionOf(JSON.stringify({ userID: 'acc-123', companion: COMPANION }))?.species).toBe('octopus')
+    expect(companionOf(JSON.stringify({ companion: COMPANION }))?.species).toBe(buddyBody('anon', true).species)
+    // A personality that names its species wins over the roll: it was written for the body at hatch.
+    const said = (personality: string) => companionOf(JSON.stringify({ oauthAccount: { accountUuid: 'acc-123' }, companion: { ...COMPANION, personality } }))
+    expect(said('A sharp-tongued rabbit with the patience of a caffeinated squirrel.')).toMatchObject({ species: 'rabbit', isShiny: false })
+    expect(said('A shiny little blob who absorbs knowledge.')).toMatchObject({ species: 'blip', isShiny: true })
+    expect(said('A duck who is sure it is a goose.')?.species).toBe('octopus')
+    expect(speciesInText('Owls and cats, scattered about')).toBeNull()
+    expect(speciesInText('Bowled over, concatenated, chonky')).toBeNull()
+    expect(speciesInText('Two penguins, both grumpy')).toBe('penguin')
+    // Every species /buddy could roll is a pixling, about evenly; about one in a hundred is shiny.
+    const seen = new Map<string, number>()
+    let shiny = 0
+    for (let i = 0; i < 9000; i++) {
+      const b = buddyBody(`user-${i}`, i % 2 === 0)
+      seen.set(b.species, (seen.get(b.species) ?? 0) + 1)
+      if (b.isShiny) shiny++
+    }
+    expect([...seen.keys()].sort()).toEqual(SPECIES.map(s => s.id).sort())
+    for (const n of seen.values()) expect(n).toBeGreaterThan(350)
+    expect(shiny).toBeGreaterThan(40)
+    expect(shiny).toBeLessThan(150)
   })
 
   test('no companion, no name, broken JSON: nothing to adopt, and nothing of the text comes back', () => {
@@ -232,7 +277,7 @@ describe('reading the old /buddy', () => {
     expect(epochMs('soon')).toBeNull()
     expect(epochMs(-5)).toBeNull()
     expect(epochMs(null)).toBeNull()
-    expect(companionOf(JSON.stringify({ companion: { name: 'Pip', hatchedAt: 'whenever' } }))).toEqual({ name: 'Pip', personality: null, hatchedAt: null })
+    expect(companionOf(JSON.stringify({ companion: { name: 'Pip', hatchedAt: 'whenever' } }))).toMatchObject({ name: 'Pip', personality: null, hatchedAt: null })
   })
 
   test('a name is cleaned as /pixling name cleans one; a personality is folded to one line', () => {
@@ -252,7 +297,7 @@ describe('reading the old /buddy', () => {
 
 describe('adoption keeps what is the person’s', () => {
   const base = (): Pixling => revive(DUCK)!
-  const found = { name: 'Pebblet', personality: COMPANION.personality, hatchedAt: 1_767_225_600_000 }
+  const found = { name: 'Pebblet', personality: COMPANION.personality, hatchedAt: 1_767_225_600_000, species: 'duck', isShiny: false }
 
   test('it takes the name, personality and days together; badges, streak, tics, dex and level stay', () => {
     const p = base()
@@ -272,13 +317,14 @@ describe('adoption keeps what is the person’s', () => {
     expect(daysTogether(next, NOON)).toBe(276)
   })
 
-  test('adopting twice is harmless; a chosen species is worn and joins the dex', () => {
+  test('adopting twice is harmless; the Buddy’s body is worn and joins the dex; shiny stays shiny', () => {
     const once = adopt(base(), found)
     expect(adopt(once, found)).toEqual(once)
-    const cat = adopt(base(), found, speciesNamed('Cat') ?? undefined)
+    const cat = adopt(base(), { ...found, species: 'cat' })
     expect(cat.species).toBe('cat')
     expect(cat.dex).toEqual(['duck', 'owl', 'cat'])
-    expect(speciesNamed('phoenix')).toBeNull()
+    expect(adopt(base(), { ...found, isShiny: true }).isShiny).toBe(true)
+    expect(adopt({ ...base(), isShiny: true }, found).isShiny).toBe(true)
     // No personality on the Buddy: the pixling keeps its own.
     expect(adopt(base(), { ...found, personality: null }).persona).toBe(base().persona)
   })
@@ -286,7 +332,7 @@ describe('adoption keeps what is the person’s', () => {
   test('saves from before adoption load, and a merge keeps what either side adopted', () => {
     const old = base()
     expect(old.adoptedFrom).toBeNull()
-    const ours = adopt(old, found, speciesNamed('cat') ?? undefined)
+    const ours = adopt(old, { ...found, species: 'cat' })
     // Another session only petted it meanwhile: our adoption survives the merge.
     const theirs: Pixling = { ...old, stats: { ...old.stats, pets: old.stats.pets + 2 } }
     const merged = mergeSave(revive(JSON.parse(JSON.stringify(theirs)))!, revive(JSON.parse(JSON.stringify(old)))!, ours)
@@ -325,7 +371,7 @@ describe('personas', () => {
     const seen = new Set(Array.from({ length: 40 }, (_, i) => personaFor('duck', DUCK.hatchedAt + i * 1000)))
     expect(seen.size).toBeGreaterThan(1)
     // A new egg is a new personality; adopting is not carried into it.
-    const adopted = adopt(once, { name: 'Pebblet', personality: 'Hums.', hatchedAt: 1 })
+    const adopted = adopt(once, { name: 'Pebblet', personality: 'Hums.', hatchedAt: 1, species: once.species, isShiny: false })
     const fresh = rehatch(adopted, () => 0.7, NOON)
     expect(fresh.adoptedFrom).toBeNull()
     expect(fresh.badges).toEqual(adopted.badges)
@@ -372,8 +418,9 @@ describe('/pixling adopt', () => {
     await clock.advance(3000)
     const out = await $.command.run({ command: 'pixling', args: 'adopt' } as never)
     expect(reads).toEqual([CONFIG_PATH])
-    expect(asked[0]).toMatch(/badges, streak, tics and dex are kept\. Adopt Pebblet\?$/)
+    expect(asked[0]).toMatch(/and becomes an Octopus, as it was; its level, stats, badges, streak, tics and dex are kept\. Adopt Pebblet\?$/)
     expect(out.text).toContain('Pebblet is back!')
+    expect(out.text).toContain('An Octopus, as /buddy rolled it.')
     expect(out.text).toContain('276 day(s) together')
     expect(out.text).toMatch(/Read on this machine/)
     expect(out.text).toMatch(/sends nothing anywhere itself/)
@@ -388,8 +435,8 @@ describe('/pixling adopt', () => {
     expect(saved.badges['exterminator']).toBe(2)
     expect(saved.streak.best).toBe(9)
     expect(saved.tics['absolutelyRight']).toBe(7)
-    expect(saved.dex).toEqual(['duck', 'owl'])
-    expect(saved.species).toBe('duck')
+    expect(saved.dex).toEqual(['duck', 'owl', 'octopus'])
+    expect(saved.species).toBe('octopus')
     // Nothing else of the file is printed, stored, shown, run or sent.
     const everything = JSON.stringify([out.text, [...db.entries()], toasts, ran, models, await state($, 'bubble'), await state($, 'persona')])
     for (const leak of LEAKS) expect(everything).not.toContain(leak)
@@ -465,23 +512,20 @@ describe('/pixling adopt', () => {
     expect(saved.adoptedFrom).toBeNull()
   })
 
-  test('a species may be chosen; an unknown one is refused before anything is read', async ($, on) => {
-    const { clock, db, reads } = host(on, { stored: DUCK, read: () => CONFIG })
+  test('no species is chosen: a word after adopt changes nothing, the Buddy’s own body is worn', async ($, on) => {
+    const { clock, db } = host(on, { stored: DUCK, read: () => CONFIG })
     answering(on, 'Bring Pebblet back')
     await $.session.start(START)
     await clock.advance(3000)
-    const bad = await $.command.run({ command: 'pixling', args: 'adopt phoenix' } as never)
-    expect(bad.text).toContain('No species called "phoenix"')
-    expect(reads).toEqual([])
-    await $.command.run({ command: 'pixling', args: 'adopt Cat' } as never)
-    // Twice: harmless.
     await $.command.run({ command: 'pixling', args: 'adopt cat' } as never)
+    // Twice: harmless.
+    await $.command.run({ command: 'pixling', args: 'adopt' } as never)
     await clock.advance(1000)
     const saved = db.get('pixling') as Pixling
-    expect(saved.species).toBe('cat')
+    expect(saved.species).toBe('octopus')
     expect(saved.name).toBe('Pebblet')
     expect(saved.badges).toEqual(expect.objectContaining(DUCK.badges))
-    expect(saved.dex).toEqual(['duck', 'owl', 'cat'])
+    expect(saved.dex).toEqual(['duck', 'owl', 'octopus'])
   })
 })
 
@@ -606,7 +650,7 @@ describe('/buddy and /pixling room', () => {
     await $.session.start(START)
     await clock.advance(3000)
     const help = await $.command.run({ command: 'pixling', args: 'help' } as never)
-    for (const word of ['/pixling adopt [species] —', '/pixling room —', '/pixling off —', '/pixling on —', '/buddy, /buddy pet', 'AI quips']) expect(help.text).toContain(word)
+    for (const word of ['/pixling adopt —', '/pixling room —', '/pixling off —', '/pixling on —', '/buddy, /buddy pet', 'AI quips']) expect(help.text).toContain(word)
   })
 })
 

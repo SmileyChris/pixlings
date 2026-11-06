@@ -6,7 +6,7 @@
 
 A tiny pixel creature that lives above your Claude Code prompt and keeps an eye on the things Claude Code doesn't show you.
 
-> **Coming from `/buddy`?** `/pixling adopt` finds the companion Claude Code left in your config and brings it back: its name, its personality, and the days you've spent together. `/buddy`, `/buddy pet`, `/buddy off` and `/buddy on` work too.
+> **Coming from `/buddy`?** `/pixling adopt` finds the companion Claude Code left in your config and brings it back: its name, its personality, the days you've spent together, and its body, the species its personality was written for. `/buddy`, `/buddy pet`, `/buddy off` and `/buddy on` work too.
 
 - **Your prompt cache, counted down.** Each message re-reads the conversation from Anthropic's prompt cache at a tenth of the normal input price. After five minutes of silence (an hour, if your setup uses the longer cache) the cache is gone, and the next message writes the whole context again at 1.25× (2× for the hour-long cache). On a 150k-token conversation that one message costs about twelve times more. Pixlings shows the countdown, and a minute before it runs out your pixling taps the glass. Switch models with a warm, expensive cache and it asks first.
 - **It wakes Claude when your limit resets.** Hit your usage limit and it naps with a countdown. When the window resets it wakes up and tells Claude to carry on, so a long task finishes while you sleep.
@@ -89,7 +89,7 @@ It counts the days in a row you show up, and the first session of the day opens 
 | Command | |
 |---|---|
 | `/pixling` | Its card: stats, personality, badges, what it has heard, the cache |
-| `/pixling adopt [species]` | Bring back your old `/buddy`: its name, personality and days together. Give a species to change its body too. |
+| `/pixling adopt` | Bring back your old `/buddy`: its name, personality, days together and body: the species its personality names, else the one `/buddy` rolled from your account. |
 | `/pixling room` | Open its room: stats, the dex garden, the badge shelf |
 | `/pixling share` | Save a trading card and copy a post to go with it |
 | `/pixling badges` | Every badge, earned or not, with progress |
@@ -127,7 +127,7 @@ All in `/config`, under Pixlings.
 
 **Does it eat my context or my tokens?** No. Nothing it draws, plays or tracks goes into Claude's prompt, and out of the box it never calls a model: `claude plugin details pixlings@pixlings` reports about 0 always-on tokens. What a `/pixling` command prints lands in the transcript like any command output (a few tokens, about 450 for `/pixling badges`), and auto-continue sends one short prompt after a limit reset. Turn `quips` to `haiku` and it asks Claude Haiku for a line now and then: at most once a minute, about a hundred tokens each, and every quip shows what it cost.
 
-**What does `/pixling adopt` read?** Claude Code kept your Buddy in its config file, `~/.claude.json` (or the one in `CLAUDE_CONFIG_DIR`). Pixlings reads that file on your machine and keeps three things from it: the companion's name, its personality and when it hatched. Nothing else is kept. Pixlings sends nothing anywhere itself, but the reply to `/pixling adopt` names your Buddy and its personality, and like any command's output it is part of the conversation Claude reads. With `quips` on, the personality is also part of each quip's request (below).
+**What does `/pixling adopt` read?** Claude Code kept your Buddy in its config file, `~/.claude.json` (or the one in `CLAUDE_CONFIG_DIR`). Pixlings reads that file on your machine and keeps three things from it: the companion's name, its personality and when it hatched. `/buddy` never stored its body. Its personality was written for that body when it hatched, so a species the personality names ("a sharp-tongued rabbit") is the one it wears; otherwise Pixlings rolls the species from your account id the way `/buddy` did, then drops the id. Signed into a different account than when it hatched, the roll gives a different body, as `/buddy` itself did. Nothing else is kept. Pixlings sends nothing anywhere itself, but the reply to `/pixling adopt` names your Buddy and its personality, and like any command's output it is part of the conversation Claude reads. With `quips` on, the personality is also part of each quip's request (below).
 
 **Does it send anything anywhere?** No network requests of its own. Its save lives in Claude Code's plugin store on your machine. With `quips` on, the quip request goes through Claude Code to Claude Haiku and holds only your pixling's name, species and personality and what happened in numbers ("3 tests just failed"): never your code, your prompts or your files.
 

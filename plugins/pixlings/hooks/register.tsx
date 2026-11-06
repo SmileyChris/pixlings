@@ -8,7 +8,7 @@ import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
-import { adopt, cleanName, companionOf, configPath, speciesNamed } from './lib/buddy.ts'
+import { adopt, cleanName, companionOf, configPath } from './lib/buddy.ts'
 import type { Companion } from './lib/buddy.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from './lib/card.ts'
 import { blank, CANVAS_W, HATCH_MS, layoutFor, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
@@ -1509,7 +1509,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'pixling',
       description: 'Your pixling: card, pet, name, wear, dex, hatch, adopt your old /buddy, room, off/on',
-      argumentHint: '[pet | name <name> | wear <item> | dex | hatch | adopt [species] | room | off | on | help]',
+      argumentHint: '[pet | name <name> | wear <item> | dex | hatch | adopt | room | off | on | help]',
     })
     // The old /buddy's name; a session where the engine refuses it still has /pixling.
     await $.command
@@ -2021,20 +2021,16 @@ export const register: Register = (on, options) => {
   }
 
   const LOCAL_NOTE = [
-    'Read on this machine; only the companion’s name, personality and hatch date were kept.',
+    'Read on this machine; only the companion’s name, personality and hatch date were kept, and its body rolled from your account id as /buddy rolled it (the id itself is not kept).',
     quipMode === 'haiku'
       ? 'With quips on, the personality is part of each quip’s request to Claude Haiku.'
       : 'Pixlings sends nothing anywhere itself.',
     'Like any command’s output, this reply is part of the conversation Claude reads.',
   ].join(' ')
 
-  const adoptBuddy = async (port: AdoptIo, arg: string): Promise<{ text: string }> => {
+  const adoptBuddy = async (port: AdoptIo): Promise<{ text: string }> => {
     const was = pixling
     if (!was) return { text: 'Your egg has not hatched yet.' }
-    const chosen = arg ? speciesNamed(arg) : null
-    if (arg && !chosen) {
-      return { text: `No species called "${arg}". Choose one of ${SPECIES.map(s => s.id).join(', ')}, or leave it out to keep ${was.name}'s body.` }
-    }
     const isWindows = platform === 'windows' || (await port.os()) === 'Windows_NT'
     const home = isWindows
       ? (await port.userProfile()) || (await port.home())
@@ -2059,7 +2055,10 @@ export const register: Register = (on, options) => {
     }
     const yes = `Bring ${found.name} back`
     const no = `Keep ${was.name} as is`
-    const body = chosen ? ` and becomes a ${chosen.name}` : ''
+    const kind = speciesById(found.species)?.name ?? found.species
+    const shiny = found.isShiny ? 'shiny ' : ''
+    const what = `${shiny}${kind}`
+    const body = found.species === was.species && (!found.isShiny || was.isShiny) ? '' : ` and becomes ${/^[aeiou]/i.test(what) ? 'an' : 'a'} ${what}, as it was`
     let answer = no
     try {
       answer = await port.ask(
@@ -2072,14 +2071,14 @@ export const register: Register = (on, options) => {
     // Only the exact label is a yes: anything typed under "Other" leaves everything as it was.
     if (answer !== yes) return { text: `Nothing changed. ${was.name} stays as is.` }
     const before = pixling ?? was
-    pixling = adopt(before, found, chosen ?? undefined)
+    pixling = adopt(before, found)
     persist()
     await publishView()
-    if (pixling.species !== before.species) port.redraw()
+    if (pixling.species !== before.species || pixling.isShiny !== before.isShiny) port.redraw()
     await express({ mood: 'celebrate', priority: PRIORITY.celebrate, holdMs: 3500, line: 'buddyBack', slots: { name: found.name }, sound: 'levelup' })
     const days = found.hatchedAt !== null ? ` ${daysTogether(pixling, now())} day(s) together, counted from when ${found.name} hatched.` : ''
     return {
-      text: [`${found.name} is back!${days}`, `Personality: ${pixling.persona}`, `Read from ${path}.`, LOCAL_NOTE].join('\n'),
+      text: [`${found.name} is back!${days}`, `${/^[aeiou]/i.test(what) ? 'An' : 'A'} ${what}, as /buddy rolled it.`, `Personality: ${pixling.persona}`, `Read from ${path}.`, LOCAL_NOTE].join('\n'),
     }
   }
 
@@ -2117,7 +2116,7 @@ export const register: Register = (on, options) => {
     '/pixling wear [item|random|none] — the wardrobe; an item puts it on, or takes it off if worn; random picks a look',
     '/pixling dex — the species you have hatched',
     '/pixling hatch — release it and hatch a new egg (level and stats reset; badges, streak and dex stay)',
-    '/pixling adopt [species] — bring back your old /buddy: its name, personality and days together (read locally)',
+    '/pixling adopt — bring back your old /buddy: its name, personality, body and days together (read locally)',
     '/pixling room — open its room',
     '/pixling off — send it away: no band, sound, voice, toasts or auto-continue (stats still count)',
     '/pixling on — bring it back',
@@ -2204,7 +2203,6 @@ export const register: Register = (on, options) => {
             configDir: () => $.env.get('CLAUDE_CONFIG_DIR'),
             redraw: () => $.ui.invalidate('ui.render'),
           },
-          arg,
         )
       case 'off':
       case 'on':
