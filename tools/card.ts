@@ -4,6 +4,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { BADGES, tierKey } from '../plugins/pixlings/hooks/lib/badges.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from '../plugins/pixlings/hooks/lib/card.ts'
 import { encodePng } from '../plugins/pixlings/hooks/lib/png.ts'
 import type { Pixling } from '../plugins/pixlings/hooks/lib/progress.ts'
@@ -40,7 +41,7 @@ const samples: Record<string, Pixling> = {
     stats: { ...emptyStats(), turns: 1342, commits: 211, bugsSquashed: 37, testsPassed: 402, prs: 18, pets: 64 },
     streak: { last: '2026-10-03', days: 12, best: 12 },
     dex: ['robot', 'duck', 'blip', 'cat', 'owl'],
-    badges: { hello: 1, exterminator: 2, centurion: 3, onFire: 4, shipper: 5, liftoff: 6, collector: 7, greenThumb: 8, absolutelyRight: 9 },
+    badges: { hello: 1, exterminator: 2, 'exterminator:2': 10, centurion: 3, 'centurion:2': 11, onFire: 4, shipper: 5, liftoff: 6, collector: 7, greenThumb: 8, absolutelyRight: 9, 'absolutelyRight:2': 12 },
     tics: { absolutelyRight: 87, perfect: 40 },
   }),
   legendary: base({
@@ -54,7 +55,8 @@ const samples: Record<string, Pixling> = {
     xp: 26000,
     stats: { ...emptyStats(), turns: 5120, commits: 640, bugsSquashed: 120, testsPassed: 980, prs: 77 },
     streak: { last: '2026-10-03', days: 41, best: 41 },
-    badges: Object.fromEntries(['hello', 'exterminator', 'dangerous', 'nightOwl', 'survivor', 'shipper', 'liftoff', 'centurion', 'onFire', 'lucky', 'absolutelyRight', 'bestFriends', 'greenThumb', 'collector', 'archmage', 'brainFreeze'].map((b, i) => [b, i])),
+    // Every badge, every tier: the shelf all gold.
+    badges: Object.fromEntries(BADGES.flatMap((b, i) => b.steps.map((_, t) => [tierKey(b.id, t + 1), i * 3 + t]))),
     tics: { absolutelyRight: 312 },
   }),
   ghost: base({ species: 'ghost', name: 'Boo', xp: 900, stats: { ...emptyStats(), turns: 220, commits: 31 } }),

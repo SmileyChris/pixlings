@@ -71,8 +71,9 @@ up when it resets. It levels up and it is yours.
     hour-long TTL). A minute before it expires the pixling warns; a cold start is counted.
 11. **Tics.** The visible text of each main-thread response is scanned for "You're absolutely
     right", "Great question" and friends; the pixling rolls its eyes and keeps the count.
-12. **Badges, streak, recap.** 16 badges earned once from the record, a daily streak, and
-    yesterday's work as the first line of the day.
+12. **Badges, streak, recap.** 18 badges, 14 of them in bronze, silver and gold over lifetime
+    counts that outlive a hatch (`Pixling.lifetime`), a daily streak, and yesterday's work as the
+    first line of the day. Tier 1 is stored under the badge's id, so older saves keep theirs.
 13. **`/pixling share`.** A 240×135 card scaled ×5 to 1200×675, encoded to PNG in-process (own
     5×7 font, own deflate), written through a process's standard input, opened, and a post copied.
 14. **Roaming** along the free columns of the band, and an **animalese voice** synthesized per

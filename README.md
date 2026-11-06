@@ -76,11 +76,11 @@ Claude Code doesn't tell a mod how long the cache lives, so Pixlings works it ou
 
 `/pixling share` draws a card, saves it to your home folder as `pixling-<name>.png`, opens it, and puts a post on your clipboard.
 
-<p align="center"><img src="docs/media/card.png" width="80%" alt="A trading card: Ember, a shiny legendary dragon in a wizard hat, level 43, 5,120 turns, 640 commits, 120 bugs squashed, a 41-day streak, all 16 badges, and &quot;You're absolutely right&quot; heard 312 times"></p>
+<p align="center"><img src="docs/media/card.png" width="80%" alt="A trading card: Ember, a shiny legendary dragon in a wizard hat, level 43, 5,120 turns, 640 commits, 120 bugs squashed, a 41-day streak, all 18 badges at gold, and &quot;You're absolutely right&quot; heard 312 times"></p>
 
 ## Badges, streaks and the morning recap
 
-Sixteen badges, each earned once: **Exterminator** for squashing 10 bugs, **Night Owl** for 25 turns after midnight, **Brain Freeze** for letting the cache go cold 10 times, **Absolutely Right** for hearing it 25 times, **On Fire** for a 7-day streak, **Liftoff** for your first pull request, and ten more. `/pixling badges` lists them all with how far along you are.
+Eighteen badges, and fourteen of them come in bronze, silver and gold, counted across every egg you hatch, so a new egg never sets them back: **Exterminator** for squashing 10, 50 and 250 bugs, **Centurion** for 100, 1,000 and 10,000 turns, **On Fire** for a 7-, 30- and 100-day streak, **Lucky** for laying 1, 2 and 4 shiny eggs, **Heard It All** for hearing Claude's tics 50, 250 and 1,000 times, **Regular** for 100, 500 and 2,000 sessions, and twelve more. **Liftoff**, your first pull request, and a few others are earned once. On the card, three pips under a badge show its tier. `/pixling badges` lists them all with how far along you are.
 
 It counts the days in a row you show up, and the first session of the day opens with yesterday: *Yesterday: 41 turns · 6 commits · 2 bugs squashed · +212 XP*.
 
