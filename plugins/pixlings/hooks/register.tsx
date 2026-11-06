@@ -116,7 +116,7 @@ const roomOpenAtom = atom({ plugin: 'pixlings', key: 'isRoomOpen' } as const, fa
  * kept or the room closes: the nest shows only for that pixling, never for one that came after.
  */
 const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, null as number | null)
-// Auto effort's pick, switch and last shift (task 6's band reads them). A reload of this module keeps them in `$.state`.
+// Auto effort's pick, switch and last shift, which the effort gate draws (`readGate`). A reload of this module keeps them in `$.state`.
 const effortPickAtom = atom({ plugin: 'pixlings', key: 'effortPick' } as const, null as PixlingsEffortPick)
 const effortAutoAtom = atom({ plugin: 'pixlings', key: 'effortAuto' } as const, true as PixlingsEffortAuto)
 const effortShiftAtom = atom({ plugin: 'pixlings', key: 'effortShift' } as const, null as PixlingsEffortShift)
@@ -362,23 +362,18 @@ async function judgePrompt($: EngineInterface, e: PromptSubmitInput, auto: Auto)
     if (!cacheSafe(modelId) || (isSlash && !skill) || !auto.view().isAuto) return
     const context = contextFrom(await $.session.messages().catch(() => []))
     const attachments = e.attachments ?? []
-    // The band draws "judging" while Haiku is out.
-    await Promise.resolve($.ui.invalidate('ui.render')).catch(() => undefined)
-    try {
-      await auto.onPrompt({
-        text: e.text,
-        isPerson,
-        ...(skill ? { skill } : {}),
-        isSlash,
-        hasAttachments: attachments.length > 0,
-        ...(attachments.length > 0 ? { attachments } : {}),
-        modelId,
-        context,
-        midTurn: e.turnId !== undefined,
-      })
-    } finally {
-      await Promise.resolve($.ui.invalidate('ui.render')).catch(() => undefined)
-    }
+    // What it decides reaches the gate through `$.state`, whose writes redraw it: no redraw to ask for here.
+    await auto.onPrompt({
+      text: e.text,
+      isPerson,
+      ...(skill ? { skill } : {}),
+      isSlash,
+      hasAttachments: attachments.length > 0,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      modelId,
+      context,
+      midTurn: e.turnId !== undefined,
+    })
   } catch {
     // Never into a prompt.
   }
@@ -2710,13 +2705,14 @@ export const register: Register = (on, options) => {
 
   /**
    * What the effort gate shows, from its state in `$.state`. Its level is the one the next main-loop request carries,
-   * as Auto would send it on the last model the main loop asked for; nothing before Auto loads or any request.
+   * as Auto would send it on the last model the main loop asked for; nothing before Auto loads or any request. `A` is
+   * lit while the person has Auto on; the reason says when Auto is paused rather than steering (`Auto.reason`).
    */
   const gateOf = (state: GateState | null, at: number): GateView | null =>
     state && {
       effort: auto && model !== undefined ? auto.nextEffort(model) : undefined,
       isAuto: state.isAuto,
-      why: state.pick?.why ?? '',
+      why: auto ? auto.reason(model) : '',
       shift: state.shift,
       now: at,
     }

@@ -629,3 +629,38 @@ describe('nextEffort: the level the next main-loop request carries', () => {
     expect(auto.view().isAuto).toBe(true)
   })
 })
+
+describe('reason: what the gate says after `auto:`', () => {
+  const opus = 'claude-opus-5-5'
+
+  test('the reason for a level Auto chose or was told', async () => {
+    const auto = await withPick(fake(), 'high')
+    expect(auto.reason(opus)).toBe('judged')
+    await auto.onPrompt(facts({ text: 'max effort please' }))
+    expect(auto.reason(opus)).toBe('you asked for it')
+  })
+
+  test('on a model Auto does not steer, that it is paused there', async () => {
+    const auto = await withPick(fake(), 'high')
+    expect(auto.reason('claude-fable-5-1')).toBe('paused on this model')
+    expect(auto.reason('claude-haiku-5-5')).toBe('paused on this model')
+    // No main-loop model known yet: the pick's own reason.
+    expect(auto.reason(undefined)).toBe('judged')
+  })
+
+  test('none for a level the person picked or Haiku not answering, until Haiku judges again', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    await auto.pickLevel('low')
+    await auto.toggleAuto()
+    expect(auto.reason(opus)).toBe('')
+    // Haiku doesn't answer; the person turns Auto back on.
+    await auto.onPrompt(facts())
+    expect(auto.view().pick?.why).toBe("Haiku didn't answer")
+    await auto.toggleAuto()
+    expect(auto.reason(opus)).toBe('')
+    f.verdicts.push({ effort: 'xhigh', why: 'big refactor' })
+    await auto.onPrompt(facts())
+    expect(auto.reason(opus)).toBe('big refactor')
+  })
+})

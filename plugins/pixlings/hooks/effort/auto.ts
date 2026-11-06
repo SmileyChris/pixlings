@@ -333,6 +333,16 @@ export function createAuto(deps: AutoDeps) {
       await Promise.all([quiet(() => deps.setState({ isAuto: turnOn })), keepAuto(turnOn)])
     },
 
+    /**
+     * What the gate says after `auto:`, which it shows only while Auto is on. On a model Auto does not steer, that it is
+     * paused there; else the reason for the level Auto chose or was told. A level the person picked, or Haiku not
+     * answering, gives none: Auto is not the one choosing until Haiku next judges.
+     */
+    reason(modelId: string | undefined): string {
+      if (modelId !== undefined && !cacheSafe(modelId)) return 'paused on this model'
+      return pick && pick.by !== 'manual' ? pick.why : ''
+    },
+
     view(): { pick: PixlingsEffortPick; isAuto: boolean; shift: PixlingsEffortShift; isJudging: boolean } {
       return { pick, isAuto, shift, isJudging }
     },

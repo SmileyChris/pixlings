@@ -57,9 +57,14 @@ const DUCK = {
   badges: { hello: 1 },
 }
 
+type HostOptions = {
+  /** When the session starts; noon UTC unless given. */
+  now?: number
+}
+
 /** The engine beneath the pixling: a judge that answers in turn (medium once the replies run out), a prompt box, toasts, and the model step. */
-const host = (on: On, replies: Reply[] = []) => {
-  const clock = mock.clock(on, { now: Date.parse('2026-10-03T12:00:00Z') })
+const host = (on: On, replies: Reply[] = [], o: HostOptions = {}) => {
+  const clock = mock.clock(on, { now: o.now ?? Date.parse('2026-10-03T12:00:00Z') })
   mock.store(on, { pixling: DUCK })
   mock.env(on, { OS: 'Windows_NT', USERPROFILE: 'C:\\Users\\tester' })
   const asked: string[] = []
@@ -124,6 +129,15 @@ const ask = async ($: Engine, text: string, effort: Effort = 'medium'): Promise<
   await stream.result
 }
 
+/** One main-loop request on `model` at the app's own `effort`, with no prompt before it. */
+const request = async ($: Engine, model: string, effort: Effort | undefined, index = 0): Promise<void> => {
+  const stream = $.turn.step({ turnId: 't', index, model, effort, messageCount: 3 } as never)
+  for await (const _ of stream) {
+    // drain
+  }
+  await stream.result
+}
+
 type Node = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 const nodes = (tree: unknown): Node[] => {
   if (!tree || typeof tree !== 'object') return []
@@ -139,6 +153,17 @@ const gateRowOf = (tree: unknown): Node | undefined =>
 /** Every Text's string, in the order drawn. */
 const texts = async (ui: { findAll: (q: { type: 'Text' }) => Promise<readonly { text: string }[]> }): Promise<string[]> =>
   (await ui.findAll({ type: 'Text' })).map(t => t.text)
+/** Whether the Auto slot is lit, as while Auto is on: its letter in the accent colour, not dim. */
+const isAutoLit = async (ui: { find: (q: never) => Promise<{ children: unknown[] } | undefined> }): Promise<boolean> => {
+  const slot = await ui.find({ type: 'Button', key: 'effort-auto' } as never)
+  const letter = slot?.children.find((c): c is Node => typeof c === 'object' && c !== null)
+  return typeof letter?.props?.['color'] === 'string' && letter.props['dimColor'] !== true
+}
+/** The gate row's text as drawn, or undefined when there is none. */
+const gateText = async (ui: { drawn: () => Promise<unknown> }): Promise<string | undefined> => {
+  const row = gateRowOf(await ui.drawn())
+  return row ? strings(row).join('') : undefined
+}
 
 describe('the effort gate in the band', () => {
   for (const band of ['full', 'compact'] as const) {
@@ -173,6 +198,83 @@ describe('the effort gate in the band', () => {
       const ui = await $.ui.mount({ ...BAND, surface })
       expect(await ui.find({ type: 'Text', text: 'auto: "judged high"' }), surface).toBeDefined()
       await ui.unmount()
+    }
+  })
+
+  test('a judged prompt redraws the gate from the state Auto writes, with no redraw asked for', { options: { band: 'full', roam: false } }, async ($, on) => {
+    // Noon where the test runs, so no late-night line writes state of its own and redraws the band for it.
+    const { clock } = host(on, [{ effort: 'xhigh', why: 'multi-file refactor' }], { now: new Date(2026, 9, 3, 12, 0, 0).getTime() })
+    await $.session.start(START)
+    await clock.advance(3000)
+    await request($, 'claude-opus-5-5', 'medium')
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await gateText(ui), surface).toBe('effort  L ─ ●M ─ H ─ X ─ Mx  ┃ A')
+      await ui.unmount()
+    }
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    // The host answers every `ui.invalidate` itself, so only the state's own redraw can show the verdict here.
+    await $.prompt.submit({ text: 'refactor the auth module', origin: COMPOSER } as never)
+    expect(await gateText(ui)).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  auto: "multi-file refactor"')
+    await ui.unmount()
+  })
+
+  for (const main of ['claude-fable-5-1', 'claude-haiku-5-5'] as const) {
+    test(`on ${main}, a model Auto does not steer, the gate says Auto is paused there, with A still lit`, { options: { band: 'full', roam: false } }, async ($, on) => {
+      const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])
+      await $.session.start(START)
+      await clock.advance(3000)
+      // Judged on Opus; then the main loop moves to a model Auto leaves alone, at the app's own effort (Haiku takes none).
+      await ask($, 'refactor the auth module')
+      await request($, main, main === 'claude-haiku-5-5' ? undefined : 'high', 1)
+      for (const surface of SURFACES) {
+        const ui = await $.ui.mount({ ...BAND, surface })
+        expect(await isAutoLit(ui), surface).toBe(true)
+        expect(await gateText(ui), surface).toMatch(/ ┃ A {2}auto: "paused on this model"$/)
+        expect(await ui.find({ type: 'Text', text: 'multi-file refactor' }), surface).toBeUndefined()
+        await ui.unmount()
+      }
+    })
+  }
+
+  test('after Haiku did not answer, pressing A lights it and gives no reason until Haiku judges again', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock, toasts } = host(on, [null])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    expect(toasts.some(t => t.includes("Haiku didn't answer"))).toBe(true)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await isAutoLit(ui)).toBe(false)
+    await ui.press({ key: 'effort-auto' })
+    await clock.advance(10)
+    await ui.unmount()
+    for (const surface of SURFACES) {
+      const shown = await $.ui.mount({ ...BAND, surface })
+      expect(await isAutoLit(shown), surface).toBe(true)
+      expect(await shown.find({ type: 'Text', text: "Haiku didn't answer" }), surface).toBeUndefined()
+      // Medium, the level Haiku's failure set, goes out until Haiku judges again.
+      expect(await gateText(shown), surface).toBe('effort  L ─ ●M ─ H ─ X ─ Mx  ┃ A')
+      await shown.unmount()
+    }
+  })
+
+  test('a level the person picked gives no reason once A is pressed again', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on, ['low'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'what is a monad')
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await ui.press({ key: 'effort-high' })
+    await clock.advance(10)
+    await ui.redraw()
+    await ui.press({ key: 'effort-auto' })
+    await clock.advance(10)
+    await ui.unmount()
+    for (const surface of SURFACES) {
+      const shown = await $.ui.mount({ ...BAND, surface })
+      expect(await isAutoLit(shown), surface).toBe(true)
+      expect(await gateText(shown), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+      await shown.unmount()
     }
   })
 
