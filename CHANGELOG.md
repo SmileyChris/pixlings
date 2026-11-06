@@ -15,6 +15,7 @@
 
 ### Changed
 
+- A shiny shines instead of blinking a pixel beside it. Every 4.5 s one rim pixel glints, a white touched with gold, mostly at the top left where the light falls; now and then, instead, a faint band of light sweeps across the body like a tilted foil card and glints an edge it crosses. Each beat rolls its own tilt and flare, and a change of mood no longer restarts them.
 - `/pixling adopt` brings back your Buddy's own body: the species its personality was written for ("a sharp-tongued rabbit"), or when it names none, the species, shiny or not, that `/buddy` rolled from your account id, hashed the way your install hashed it (the id is not kept). Now that every Buddy species is a pixling, it no longer takes a species to wear instead.
 - A new egg is rolled from its parent's birth time, not at random. Released before level 5, a pixling hasn't matured, and the next egg is the one it came from: the same species and name. `/pixling hatch` no longer rerolls for a rarer species; the hatch prompt says when the egg will be the same.
 - A pet lasts: after one, the next waits 20 minutes, across every terminal, and the room's ♥ Pet button hides until then. Every pet now counts for experience (the 20-a-day cap is gone).

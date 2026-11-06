@@ -67,6 +67,8 @@ export type FrameInput = {
   readonly reliefT?: number | null
   /** Holds still at rest: idle, working and asleep draw no bob. */
   readonly isCalm?: boolean
+  /** A steady clock (ms) for a shiny's glints, so a change of mood doesn't restart them; `t` if absent. */
+  readonly shineT?: number
   /** Subagents' minis, on a strip of their own right of the canvas `width`. */
   readonly squad?: readonly MiniView[]
   /** Minis past the strip's cap, counted as "+N" at its end. */
@@ -381,6 +383,127 @@ const drawSparkles = (p: Pixels, ox: number, t: number, colors: readonly number[
     if (phase < 2) put(p, x + 1, y + 1, color)
     else if (phase < 4) stamp(p, x, y, SPARKLE, { '#': color, W: WHITE })
   })
+}
+
+// A shiny's shine: every SHINE_MS a beat rolls. Sometimes a faint band of light sweeps across the
+// body, like a foil card tilted, and glints one edge it crosses; otherwise one rim pixel glints,
+// leaning toward the top left where the light is. Each beat rolls its own tilt and flare.
+
+const SHINE_MS = 4500
+const SHEEN_CHANCE = 0.15
+const SHEEN_MS = 500
+/** The band's half-width, in pixels across its travel. */
+const SHEEN_BAND = 1.5
+/** How far toward white the band's centre lifts the body. */
+const SHEEN_LIFT = 0.1
+/** The tilt of the band (x + y·tilt is constant along it), rolled in this range each beat. */
+const SHEEN_TILT: readonly [number, number] = [0.5, 1.75]
+/** Where across the body the sheen's glint fires, as a fraction of its width along the travel. */
+const SHEEN_GLINT: readonly [number, number] = [0.2, 0.8]
+const GLINT_MS = 480
+/** How much a rim glint favours the top-left of the body over a random rim pixel. */
+const GLINT_BIAS = 0.7
+/** A flare's points that fall in the air, off the body. */
+const FLARE_AIR = 0xc8c29a
+/** A glint's heart: a white with a touch of gold. */
+const GLINT = 0xfff6bd
+
+/** The body as drawn at `t` (a wiggling row's frame included): its pixels and its rim. */
+const silhouette = (s: Species, t: number): { isIn: (x: number, y: number) => boolean; rim: Point[] } => {
+  const beat = step(t, 320) % 2
+  const rows = s.art.map((row, y) => {
+    const wiggle = s.wiggle?.find(w => w.row === y)
+    return wiggle ? (pick(wiggle.frames, beat) ?? row) : row
+  })
+  const isIn = (x: number, y: number): boolean => {
+    const ch = rows[y]?.[x]
+    return ch !== undefined && ch !== '.' && s.palette[ch] !== undefined
+  }
+  const rim: Point[] = []
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      if (isIn(x, y) && (!isIn(x + 1, y) || !isIn(x - 1, y) || !isIn(x, y + 1) || !isIn(x, y - 1))) rim.push([x, y])
+    }
+  })
+  return { isIn, rim }
+}
+
+/** One glint on a rim pixel at `peak` (0 to 1): it lifts toward white, and with a flare a cross lights around it. */
+const glint = (p: Pixels, body: ReturnType<typeof silhouette>, ox: number, oy: number, [x, y]: Point, peak: number, flare: number): void => {
+  const at = get(p, ox + x, oy + y)
+  if (at !== TRANSPARENT) put(p, ox + x, oy + y, mix(at, GLINT, Math.min(1, peak * 1.6)))
+  if (flare < 1 || peak <= 0.45) return
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    const nx = ox + x + dx
+    const ny = oy + y + dy
+    const near = get(p, nx, ny)
+    if (body.isIn(x + dx, y + dy)) {
+      if (near !== TRANSPARENT) put(p, nx, ny, mix(near, WHITE, 0.45 * peak))
+    } else if (flare >= 2 && peak > 0.75 && near === TRANSPARENT) put(p, nx, ny, FLARE_AIR)
+  }
+}
+
+const drawShine = (p: Pixels, s: Species, ox: number, oy: number, t: number, clock: number): void => {
+  const body = silhouette(s, t)
+  if (body.rim.length === 0) return
+  const beat = step(clock, SHINE_MS)
+  const local = clock - beat * SHINE_MS
+  const flare = Math.floor(hash(beat * 29 + 3) * 3)
+  const peakAt = (g: number): number => 1 - Math.abs((g / GLINT_MS) * 2 - 1)
+
+  if (hash(beat * 11 + 5) >= SHEEN_CHANCE) {
+    if (local >= GLINT_MS) return
+    // The rim pixels that score best, by the top-left lean with a little chance mixed in; one of the first four.
+    const xs = body.rim.map(([x]) => x)
+    const ys = body.rim.map(([, y]) => y)
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+    const ranked = body.rim
+      .map((pt, i) => {
+        const topLeft = 1 - ((pt[0] - x0) / (x1 - x0 + 1) + (pt[1] - y0) / (y1 - y0 + 1)) / 2
+        return { pt, score: hash(beat * 31 + i) * (1 - GLINT_BIAS) + topLeft * GLINT_BIAS + hash(beat * 17 + i * 3) * 0.15 }
+      })
+      .sort((a, b) => b.score - a.score)
+    const spot = ranked[Math.floor(hash(beat * 5 + 9) * Math.min(4, ranked.length))]
+    if (spot) glint(p, body, ox, oy, spot.pt, peakAt(local), flare)
+    return
+  }
+
+  const tilt = SHEEN_TILT[0] + (SHEEN_TILT[1] - SHEEN_TILT[0]) * hash(beat * 37 + 1)
+  const across = ([x, y]: Point): number => x + y * tilt
+  const us = body.rim.map(across)
+  const lo = Math.min(...us)
+  const hi = Math.max(...us)
+  // The band starts a band's width before the body and ends one past it.
+  const travel = hi - lo + SHEEN_BAND * 2
+  const centreAt = (ms: number): number => lo - SHEEN_BAND + travel * (ms / SHEEN_MS)
+
+  if (local < SHEEN_MS) {
+    const centre = centreAt(local)
+    s.art.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        const d = Math.abs(x + y * tilt - centre)
+        const at = get(p, ox + x, oy + y)
+        if (d < SHEEN_BAND && body.isIn(x, y) && at !== TRANSPARENT) put(p, ox + x, oy + y, mix(at, WHITE, SHEEN_LIFT * (1 - d / SHEEN_BAND)))
+      }
+    })
+  }
+
+  // At a moment rolled for the beat, the band's centre line glints one edge it crosses, and the glint
+  // stays there as the band moves on. The line takes every rim pixel whose square it passes through,
+  // so it can't slip between the steps of a diagonal edge.
+  const f = SHEEN_GLINT[0] + (SHEEN_GLINT[1] - SHEEN_GLINT[0]) * hash(beat * 23 + 7)
+  const glintAt = ((SHEEN_BAND + f * (hi - lo)) / travel) * SHEEN_MS
+  const g = local - glintAt
+  if (g < 0 || g >= GLINT_MS) return
+  const centre = centreAt(glintAt)
+  const reach = (1 + tilt) / 2
+  const crossed = body.rim.filter(pt => Math.abs(across(pt) - centre) <= reach)
+  if (crossed.length === 0) return
+  // Along the line, its two ends are the two edges; the beat picks one.
+  const along = ([x, y]: Point): number => x * tilt - y
+  crossed.sort((a, b) => along(b) - along(a))
+  const edge = hash(beat * 41 + 13) < 0.5 ? crossed[0] : crossed[crossed.length - 1]
+  if (edge) glint(p, body, ox, oy, edge, peakAt(g), flare)
 }
 
 const drawConfetti = (p: Pixels, t: number): void => {
@@ -928,9 +1051,7 @@ export const renderFrame = (input: FrameInput): Pixels => {
     const gear = ICONS[input.icon]
     stamp(p, Math.min(width - 5, ox + s.head[0] + 5), Math.max(0, oy + s.head[1] - 3), gear.rows, gear.colors)
   }
-  if (input.isShiny && step(t, 1700) % 3 === 0) {
-    put(p, ox - 2, oy + 1 + (step(t, 200) % 2), 0xfff6a8)
-  }
+  if (input.isShiny) drawShine(p, s, ox, oy, t, input.shineT ?? t)
   if (squad.length > 0 || hidden > 0) drawSquad(p, width, squad, hidden)
   return p
 }
