@@ -46,7 +46,9 @@ import {
   isUnreadable,
   levelOf,
   mergeSave,
-  rehatch,
+  MATURE_LEVEL,
+  nextEgg,
+  nextSeedOf,
   friendshipOf,
   petWait,
   revive,
@@ -939,7 +941,7 @@ export const register: Register = (on, options) => {
   const hatch = async (): Promise<void> => {
     const port = io
     if (!port) return
-    const egg = pixling ? rehatch(pixling, Math.random, now()) : hatchPixling(Math.random, now())
+    const egg = pixling ? nextEgg(pixling, now()) : hatchPixling(Math.random, now())
     pixling = touchDay(bump(egg, 'sessions'), now()).pixling
     await commit()
     const s = species()
@@ -2280,7 +2282,10 @@ export const register: Register = (on, options) => {
         let answer = keep
         try {
           answer = await $.ui.ask(
-            `Release ${pixling.name} and hatch a new egg? Level and stats start over; your badges, streak, tics and dex are kept.`,
+            `Release ${pixling.name} and hatch a new egg? Level and stats start over; your badges, streak, tics and dex are kept.` +
+              (nextSeedOf(pixling) !== pixling.hatchedAt
+                ? ` ${pixling.name} hasn't matured yet (level ${MATURE_LEVEL}), so the egg is the one ${pixling.name} came from: the same ${species().name}.`
+                : ''),
             [keep, HATCH_LABEL],
           )
         } catch {

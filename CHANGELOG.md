@@ -12,6 +12,7 @@
 
 ### Changed
 
+- A new egg is rolled from its parent's birth time, not at random. Released before level 5, a pixling hasn't matured, and the next egg is the one it came from: the same species and name. `/pixling hatch` no longer rerolls for a rarer species; the hatch prompt says when the egg will be the same.
 - A pet lasts: after one, the next waits 20 minutes, across every terminal, and the room's ♥ Pet button hides until then. Every pet now counts for experience (the 20-a-day cap is gone).
 - Resizing the window no longer leaves the picture stretched, squashed or cut off. A picture of a new size is a new image to the terminal, placed afresh; before, the same image id was reused at every size, and a terminal that keeps the first placement's cells drew the new picture into the old ones. The sprite also never shrinks when the band is laid out narrower than it was drawn for: the column beside it truncates instead.
 - A band that narrows and widens again keeps the pixling its distance from home, beside the bubble, instead of leaving it at the far left until its next stroll.

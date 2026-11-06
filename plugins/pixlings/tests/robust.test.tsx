@@ -425,6 +425,28 @@ describe('the save', () => {
     expect(asked[0]).toMatch(/badges/)
   })
 
+  test('released young, the egg is the one it came from, and the prompt says so; grown, it says nothing', async ($, on) => {
+    const { clock, db } = host(on, { ...DUCK, xp: 0, eggSeed: 1_600_000_000_000 })
+    const asked = answering(on, 'Hatch a new egg')
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    await $.command.run({ command: 'pixling', args: 'hatch' } as never)
+    await clock.advance(6000)
+    expect(asked[0]).toContain("hasn't matured yet")
+    expect((db.get('pixling') as { eggSeed: number }).eggSeed).toBe(1_600_000_000_000)
+  })
+
+  test('a grown pixling hatches from its own birth time, and the prompt has no note', async ($, on) => {
+    const { clock, db } = host(on, { ...DUCK, xp: 5000, eggSeed: 1_600_000_000_000 })
+    const asked = answering(on, 'Hatch a new egg')
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    await $.command.run({ command: 'pixling', args: 'hatch' } as never)
+    await clock.advance(6000)
+    expect(asked[0]).not.toContain("hasn't matured")
+    expect((db.get('pixling') as { eggSeed: number }).eggSeed).toBe(DUCK.hatchedAt)
+  })
+
   test('free text typed into the release dialog does not release the pixling', async ($, on) => {
     const { clock, db } = host(on, { ...DUCK, xp: 5000 })
     answering(on, 'no, keep him')
