@@ -24,12 +24,22 @@ type HostOptions = {
   commands?: Command[]
   /** The draft in the prompt box. */
   draft?: string
+  /** Holds every store read until it settles, so a test can act while a session start is still reading its save. */
+  holdStore?: Promise<void>
 }
 
 /** The engine beneath the pixling, recording what Auto does to it. */
 const host = (on: On, o: HostOptions = {}) => {
   const clock = mock.clock(on, { now: Date.parse('2026-10-03T12:00:00Z') })
-  mock.store(on, {})
+  const db = new Map<string, unknown>()
+  on('store.get', async ($, e) => {
+    await o.holdStore
+    return { value: db.get(e.key) } as never
+  })
+  on('store.set', ($, e) => {
+    db.set(e.key, JSON.parse(JSON.stringify(e.value)))
+    return { value: undefined } as never
+  })
   mock.env(on, { OS: 'Windows_NT', USERPROFILE: 'C:\\Users\\tester' })
   const asked: { model: string; prompt: string; timeoutMs?: number }[] = []
   const toasts: string[] = []
@@ -257,5 +267,32 @@ describe('Auto effort in a session', () => {
     await step($, 'claude-opus-5-5', 'high')
     expect(asked).toEqual([])
     expect(reached.map(r => r.effort)).toEqual(['medium'])
+  })
+
+  test('a prompt and a request that arrive while the saved state is still being read pass through untouched', async ($, on) => {
+    let release: () => void = () => undefined
+    const { asked, reached } = host(on, { replies: ['max'], holdStore: new Promise<void>(resolve => (release = resolve)) })
+    // A reload: the engine's state remembers that Haiku failed (Auto off, medium), the store still says Auto is on.
+    const kept = new Map<string, unknown>([
+      ['pixlings/effortAuto', false],
+      ['pixlings/effortPick', { effort: 'medium', why: "Haiku didn't answer", by: 'manual' }],
+    ])
+    on('state.get', ($, e) => ({ value: { value: kept.get(`${e.plugin}/${e.key}`), version: 1 } }) as never)
+    on('state.set', ($, e) => {
+      kept.set(`${e.plugin}/${e.key}`, e.value)
+      return { value: { isSet: true, version: 2 } } as never
+    })
+    // The session start is not awaited, as a reload's is, and its store reads are held open.
+    const starting = $.session.start(START)
+    await say($, 'refactor the auth module')
+    await step($, 'claude-opus-5-5', 'high')
+    expect(asked).toEqual([])
+    expect(reached.map(r => r.effort)).toEqual(['high'])
+    release()
+    await starting
+    await say($, 'rebuild the whole build pipeline')
+    await step($, 'claude-opus-5-5', 'high', { index: 1 })
+    expect(asked).toEqual([])
+    expect(reached.map(r => r.effort)).toEqual(['high', 'medium'])
   })
 })

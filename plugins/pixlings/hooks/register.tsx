@@ -1511,33 +1511,40 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     folder = folderOf(e.cwd)
-    auto = createAuto({
-      now,
-      setState: async p => {
-        if (p.pick !== undefined) await update($, effortPickAtom, () => p.pick ?? null)
-        if (p.isAuto !== undefined) await update($, effortAutoAtom, () => p.isAuto ?? true)
-        if (p.shift !== undefined) await update($, effortShiftAtom, () => p.shift ?? null)
-      },
-      // A value never written reads as undefined by its reference, which tells "unset" from a real one after a reload of this module.
-      readState: async () => {
-        const [pick, isAuto, shift] = await Promise.all([
-          read($, { plugin: 'pixlings', key: 'effortPick' } as const),
-          read($, { plugin: 'pixlings', key: 'effortAuto' } as const),
-          read($, { plugin: 'pixlings', key: 'effortShift' } as const),
-        ])
-        return {
-          ...(pick === undefined ? {} : { pick }),
-          ...(isAuto === undefined ? {} : { isAuto }),
-          ...(shift === undefined ? {} : { shift }),
-        }
-      },
-      store: { get: key => $.store.get(key), set: async (key, value) => $.store.set(key, value) },
-      toast: text => $.ui.toast(text),
-      typeEffort: level => typeEffort($, level, typing),
-      ask: async (prompt, current, context) => askHaiku(request => $.model.complete(request), prompt, current, context, contextPercent),
-      cfg: autoConfig,
-    })
-    await auto.load().catch(() => undefined)
+    // Auto steers only once it has read its saved state: a reload runs this hook unawaited, and until then `auto` is null,
+    // so a prompt or a request passes through rather than meeting a controller that thinks Auto is on with no pick.
+    try {
+      const local = createAuto({
+        now,
+        setState: async p => {
+          if (p.pick !== undefined) await update($, effortPickAtom, () => p.pick ?? null)
+          if (p.isAuto !== undefined) await update($, effortAutoAtom, () => p.isAuto ?? true)
+          if (p.shift !== undefined) await update($, effortShiftAtom, () => p.shift ?? null)
+        },
+        // A value never written reads as undefined by its reference, which tells "unset" from a real one after a reload of this module.
+        readState: async () => {
+          const [pick, isAuto, shift] = await Promise.all([
+            read($, { plugin: 'pixlings', key: 'effortPick' } as const),
+            read($, { plugin: 'pixlings', key: 'effortAuto' } as const),
+            read($, { plugin: 'pixlings', key: 'effortShift' } as const),
+          ])
+          return {
+            ...(pick === undefined ? {} : { pick }),
+            ...(isAuto === undefined ? {} : { isAuto }),
+            ...(shift === undefined ? {} : { shift }),
+          }
+        },
+        store: { get: key => $.store.get(key), set: async (key, value) => $.store.set(key, value) },
+        toast: text => $.ui.toast(text),
+        typeEffort: level => typeEffort($, level, typing),
+        ask: async (prompt, current, context) => askHaiku(request => $.model.complete(request), prompt, current, context, contextPercent),
+        cfg: autoConfig,
+      })
+      await local.load().catch(() => undefined)
+      auto = local
+    } catch {
+      // Auto effort never takes the session start down with it.
+    }
     const port: Io = {
       now: () => $.clock.now(),
       after: (ms, fn) => $.clock.after(ms, fn),
