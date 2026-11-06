@@ -2,7 +2,8 @@
 // Effortless's (HeyCubit/effortless 1.72.0, hooks/register.tsx: `prompt.submit`, `turn.step`, `pickEffort`,
 // `toggleAutoEffort`, `choose`, the held pick on `turn.complete`), written fresh without `$`: the engine comes in as
 // deps, so plain fakes stand in under test. Where Pixlings differs (Haiku not answering turns Auto off for the
-// session at medium, one judge call at a time, a level Pixlings itself sent is never the person's), a comment says so.
+// session at medium, one judge call at a time, the app taking the `/effort` Pixlings typed is not the person's
+// change), a comment says so.
 
 import type { PixlingsEffortPick, PixlingsEffortShift } from '../../types'
 import type { Verdict } from './haiku.ts'
@@ -113,11 +114,9 @@ export function createAuto(deps: AutoDeps) {
   let isJudging = false
   // A lower level for a message typed mid-turn waits for the turn to end (Effortless heldPick).
   let heldPick: Chosen | null = null
-  // The app's own effort as last seen on a main-loop request (Effortless engineEffort). Pixlings rewrites requests,
-  // never the setting, so a change it didn't make is the person's: their pick wins and Auto goes off.
+  // The app's own effort as last seen on a main-loop request (Effortless engineEffort). A request reports the app's
+  // setting, never the effort Pixlings rewrote it to, so a change is the person's: their pick wins and Auto goes off.
   let engineEffort: Effort | undefined
-  // The level Pixlings last put on a main-loop request: the app reporting that level is not the person's doing.
-  let sentEffort: Effort | undefined
   let model: ModelKey | undefined
   // The pick came from the store, not this session: the app's effort, which the person may have just set, overrules it.
   let pickCarried = false
@@ -188,28 +187,30 @@ export function createAuto(deps: AutoDeps) {
       const floor = helperFloor(cfg.floor, cfg.ceiling)
       return rank(p.effort) < rank(floor) ? floor : p.effort
     }
-    // The app's effort can differ per model, so a change across a model switch is not the person's (Effortless modelIs).
+    // The app's effort can differ per model, so a change across a model switch is not the person's, and a carried
+    // pick has met this session (Effortless modelIs, whose choose clears pickCarried).
     const key = keyOf(r.modelId)
     if (key && key !== model) {
+      if (model !== undefined) pickCarried = false
       model = key
       engineEffort = undefined
     }
     if (isEffort(r.effort)) {
       const seen = r.effort
       const isFirst = engineEffort === undefined
-      const isOurs = seen === sentEffort || (pick?.by === 'manual' && pick.effort === seen)
-      const isByPerson = !isFirst && seen !== engineEffort && !isOurs
+      // The app taking the /effort Pixlings typed for a click lands on the manual pick's level: not a new choice.
+      const isTyped = pick?.by === 'manual' && pick.effort === seen
+      const isByPerson = !isFirst && seen !== engineEffort && !isTyped
       engineEffort = seen
       // A new session with Auto off starts from the carried pick, but the level the app is on now is the person's.
       const takesApp = isFirst && pickCarried && !isAuto && pick?.effort !== seen
+      // The request goes out at the person's level, which is the app's own.
       if (isByPerson || takesApp) {
         pickedInApp(seen)
-        sentEffort = undefined
-        return undefined
+        return seen
       }
     }
-    sentEffort = enforced(r.modelId)?.effort
-    return sentEffort
+    return enforced(r.modelId)?.effort
   }
 
   return {

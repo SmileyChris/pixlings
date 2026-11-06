@@ -202,6 +202,20 @@ describe('createAuto', () => {
     expect(f.asked).toEqual([{ prompt: 'refactor it', current: { model: 'opus', effort: 'medium', why: '', by: 'manual' }, context: 'user: hi' }])
   })
 
+  test('the settings bound a verdict', async () => {
+    const capped = fake({ cfg: { ceiling: 'high' } })
+    const a = await withPick(capped, 'medium')
+    capped.verdicts.push({ effort: 'max', why: 'huge job', sure: 0.9 })
+    await a.onPrompt(facts())
+    expect(a.view().pick).toEqual({ effort: 'high', why: 'your settings', by: 'haiku' })
+
+    const leaned = fake({ cfg: { bias: -1 } })
+    const b = await withPick(leaned, 'low')
+    leaned.verdicts.push({ effort: 'high', why: 'tricky', sure: 0.5 })
+    await b.onPrompt(facts())
+    expect(b.view().pick).toEqual({ effort: 'medium', why: 'your settings', by: 'haiku' })
+  })
+
   test('named level skips the judge', async () => {
     const f = fake({ cfg: { ceiling: 'high' } })
     const auto = await withPick(f, 'medium')
@@ -440,13 +454,34 @@ describe('createAuto', () => {
     expect(f.toasts).toEqual([])
     expect(f.sets).toEqual([])
 
+  })
+
+  test('the app moving to the level Auto sends is the person', async () => {
+    // turn.step reports the app's own effort, never the one Pixlings rewrote: only the person moves it.
+    const opus = 'claude-opus-5-5'
     const g = fake()
     const sent = await withPick(g, 'high')
     expect(sent.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
     expect(sent.requestEffort({ modelId: opus, effort: 'high' })).toBe('high')
-    expect(sent.view().isAuto).toBe(true)
-    expect(sent.view().pick?.by).toBe('haiku')
-    expect(g.toasts).toEqual([])
+    expect(sent.view().isAuto).toBe(false)
+    expect(sent.view().pick).toEqual({ effort: 'high', why: 'your pick in the app', by: 'manual' })
+    expect(g.stored.get('effortAuto')).toBe(false)
+    expect(g.toasts).toHaveLength(1)
+  })
+
+  test('the person setting the level Auto sent, then Auto moving away, is still the person', async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    // The person runs /effort high; the next prompt is judged low before another request goes out.
+    f.verdicts.push({ effort: 'low', why: 'small' })
+    await auto.onPrompt(facts({ text: 'rename the variable' }))
+    expect(auto.view().pick?.effort).toBe('low')
+    expect(auto.requestEffort({ modelId: opus, effort: 'high' })).toBe('high')
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'high', why: 'your pick in the app', by: 'manual' })
+    expect(f.toasts).toHaveLength(1)
   })
 
   test('the app taking the typed /effort before any request carried it is not the person', async () => {
@@ -466,7 +501,7 @@ describe('createAuto', () => {
     const f = fake()
     const auto = await withPick(f, 'high')
     expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
-    expect(auto.requestEffort({ modelId: opus, effort: 'max' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: opus, effort: 'max' })).toBe('max')
     expect(auto.view().isAuto).toBe(false)
     expect(auto.view().pick).toEqual({ effort: 'max', why: 'your pick in the app', by: 'manual' })
     await Promise.resolve()
@@ -496,8 +531,23 @@ describe('createAuto', () => {
     const f = fake({ stored })
     const auto = createAuto(f.deps)
     await auto.load()
-    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'low' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'low' })).toBe('low')
     expect(auto.view().pick).toEqual({ effort: 'low', why: 'your pick in the app', by: 'manual' })
     expect(f.toasts).toHaveLength(1)
+  })
+
+  test('a model switch in a carried-over session is not the person', async () => {
+    const stored = new Map<string, unknown>([
+      ['effortAuto', false],
+      ['effortPick', { effort: 'xhigh', why: 'your pick', by: 'manual' }],
+    ])
+    const f = fake({ stored })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'xhigh' })).toBe('xhigh')
+    expect(auto.requestEffort({ modelId: 'claude-sonnet-5-5', effort: 'high' })).toBe('xhigh')
+    expect(f.toasts).toEqual([])
+    expect(auto.view().pick).toEqual({ effort: 'xhigh', why: 'your pick', by: 'manual' })
+    expect(auto.view().isAuto).toBe(false)
   })
 })
