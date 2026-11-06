@@ -77,7 +77,7 @@ Claude Code doesn't tell a mod how long the cache lives, so Pixlings works it ou
 
 ## Auto effort
 
-By default, each prompt you send is read by Claude Haiku 5.5, which picks the effort Claude answers at (low, medium, high, xhigh or max) and says why. The judging is [Effortless](https://github.com/HeyCubit/effortless)'s own, copied so it behaves the same. Haiku runs on your own Claude login, like any Claude Code request. A bare "ok" or "go" keeps the level, naming one ("max effort") uses it as is, and an effort you pick always wins over Auto's. If Haiku doesn't answer, Auto switches itself off at medium and tells you.
+By default, each prompt you send is read by Claude Haiku 5.5, which picks the effort Claude answers at (low, medium, high, xhigh or max) and says why. The judging is [Effortless](https://github.com/HeyCubit/effortless)'s own, copied so it behaves the same. Haiku runs on your own Claude login, like any Claude Code request. A bare "ok" or "go" keeps the level, naming one ("max effort") uses it as is, and an effort you pick always wins over Auto's. If Haiku doesn't answer, Auto switches itself off at medium for this session and tells you; click `A` to try again.
 
 In the `full` and `compact` bands the effort gate sits on a row of its own:
 
@@ -87,9 +87,9 @@ effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
 
 The knob is on the level in use, and when it moves, arrows show which way. Click a level to pick it (Auto turns off); click `A` to turn Auto on, and again to turn it off. In `slim` and `minimal` a mini gate, `LMHXM A`, takes the place of the effort at the end of the line: the level in use is lit, the rest dim, and `A` is lit while Auto is on. It's clickable the same way. `/pixling room` shows the gate too. Set `autoEffort` to `false` to turn all of it off.
 
-Auto steers only on models where changing the effort leaves the prompt cache alone: Opus 5.5 and Sonnet 5.5. On any other model it does nothing and the app's own effort goes out, since changing it there would rewrite the cache.
+Auto steers only on models where changing the effort leaves the prompt cache alone: Opus 5.5 and Sonnet 5.5. On any other model it does nothing and the app's own effort goes out, since changing it there would rewrite the cache; the gate says `paused on this model`.
 
-> **Coming from Effortless?** You don't need it alongside Pixlings. Both draw the band above the prompt, and Effortless's takes the slot, so Pixlings' never shows. Uninstall Effortless and Auto effort carries on here.
+> **Coming from Effortless?** You don't need it alongside Pixlings. Both draw the band above the prompt, and Effortless's takes the slot, so Pixlings' never shows. Uninstall Effortless before you update Pixlings, or when you do, and Auto effort carries on here. While both are installed, Pixlings' Auto stands down so the two never fight over the effort, and says so. Effortless's own Auto switch and its Min, Max and bias settings don't carry over: set `effortFloor`, `effortCeiling` and `effortBias` in Pixlings.
 
 ## Trading cards
 
