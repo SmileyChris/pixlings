@@ -22,6 +22,7 @@ import {
   linuxPlayer,
   linuxSpeaker,
   notificationArgv,
+  notificationIdOf,
   openArgv,
   platformOfUname,
   speakable,
@@ -31,6 +32,8 @@ import {
   writeBytesArgv,
 } from './lib/platform.ts'
 import type { Platform, Player } from './lib/platform.ts'
+import { BUS_MONITOR_ARGV, busReader, clickRouter, focusPaneArgv, folderOf, notificationTitle, removeNotificationArgv, zellijPaneOf } from './lib/focus.ts'
+import type { ZellijPane } from './lib/focus.ts'
 import { encodePng } from './lib/png.ts'
 import { mayQuip, quipOf, quipRequest, tokensOf } from './lib/quips.ts'
 import type { QuipFacts, QuipKind, QuipReply, QuipRequest } from './lib/quips.ts'
@@ -85,6 +88,8 @@ const hatchAtom = atom({ plugin: 'pixlings', key: 'hatchAt' } as const, null as 
 const moodAtom = atom({ plugin: 'pixlings', key: 'mood' } as const, 'idle')
 const vitalsAtom = atom({ plugin: 'pixlings', key: 'vitals' } as const, [] as PixlingsVital[])
 const cacheAtom = atom({ plugin: 'pixlings', key: 'cache' } as const, null as PixlingsCache)
+/** Whether the room is open, so the band leaves out its door to it. */
+const roomOpenAtom = atom({ plugin: 'pixlings', key: 'isRoomOpen' } as const, false)
 
 const STORE_KEY = 'pixling'
 /** Where a save this version cannot read is copied before the session runs without saving. */
@@ -163,6 +168,11 @@ const TONE_COLOR: Readonly<Record<PixlingsVital['tone'], string | undefined>> = 
 const CARD_FILL = '#1a1b26'
 const CARD_FILL_PX = parseInt(CARD_FILL.slice(1), 16)
 const CARD_INK = '#c0caf5'
+/** The door, brown wood, and its brass knob. */
+const DOOR = '#8b5a2b'
+const DOOR_KNOB = '#e0af68'
+/** The door's frame, half-width blocks either side of it under the pointer. */
+const DOOR_FRAME = '#000000'
 /** The card's rows: its border, who it is, the badge shelf (icons of 7 pixels, 4 rows) and what it heard. */
 const CARD_ROWS = 8
 
@@ -230,6 +240,12 @@ type Io = {
   /** macOS's own voice, through the engine. */
   speak: (text: string) => Promise<void>
   pipe: (argv: string[], stdin: string, timeoutMs: number) => Promise<void>
+  /** The terminal the session runs in, and the zellij pane when there is one. */
+  terminal: () => Promise<{ program?: string; zellijSession?: string; zellijPane?: string }>
+  /** A notification through the terminal's own channel: the channel that sent it, else null. */
+  notify: (text: string, title: string) => Promise<string | null>
+  /** Runs a process for the module's life, handing over what it writes; settles when it ends. */
+  watch: (argv: string[], onText: (text: string) => void) => Promise<void>
 }
 
 export const register: Register = (on, options) => {
@@ -263,6 +279,16 @@ export const register: Register = (on, options) => {
   let platform: Platform = 'unknown'
   let player: Player = { kind: 'none' }
   let soundRoot = ''
+  /** Linux under Ghostty: notifications are Ghostty's own, so a click raises the right tab. */
+  let isGhostty = false
+  /** The zellij pane the session runs in, focused when its notification is clicked. */
+  let zellijPane: ZellijPane | null = null
+  let watching: 'no' | 'yes' | 'failed' = 'no'
+  const clicks = clickRouter()
+  /** The session's folder, in each notification's title to say which session it is from. */
+  let folder = ''
+  /** The last `notify-send` notification's id, replaced by the next so they never stack. */
+  let lastNotificationId: string | undefined
   let held: Held | null = null
   let bubble: Bubble | null = null
   let bubbleId = 0
@@ -425,11 +451,53 @@ export const register: Register = (on, options) => {
   const notify = (body: string): void => {
     const port = io
     if (!port || isQuiet || isAway || !wantsNotifications || !pixling) return
-    const argv = notificationArgv(platform, `${pixling.name} · Claude Code`, body)
-    if (!argv) return
+    const title = notificationTitle(pixling.name, folder)
+    const send = async (): Promise<void> => {
+      const argv = notificationArgv(platform, title, body, lastNotificationId)
+      if (!argv) return
+      const printed = await port.run(argv, 15_000)
+      if (platform === 'linux') lastNotificationId = notificationIdOf(printed) ?? lastNotificationId
+    }
     port.after(0, () => {
-      void port.run(argv, 15_000).catch(() => undefined)
+      void (async () => {
+        if (!isGhostty) return send()
+        // Ghostty's own notification: a click raises its window and the tab this session is in.
+        // Anything short of that (a bell, nothing) still gets the desktop's.
+        if ((await port.notify(body, title).catch(() => null)) !== 'ghostty') return send()
+        clicks.sent(title, body)
+        watchBus(port)
+      })().catch(() => undefined)
     })
+  }
+
+  /**
+   * Listens on the session bus to the notifications Ghostty raises. Each of the pixling's takes
+   * down the pixling notifications before it from the same Ghostty tab, this session's or
+   * another's, so one is left and a click on it has one pane to go to. And under zellij a click raises the Ghostty tab,
+   * not the zellij tab: on a click on ours, this focuses the pane. Started with the session, so it
+   * hears the first notification Ghostty raises; once only, unless it ends.
+   */
+  const watchBus = (port: Io): void => {
+    if (!isGhostty || !wantsNotifications || watching !== 'no') return
+    watching = 'yes'
+    const pane = zellijPane
+    const read = busReader()
+    port
+      .watch(BUS_MONITOR_ARGV, text => {
+        for (const event of read(text)) {
+          for (const id of clicks.superseded(event)) void port.run(removeNotificationArgv(id), 5000).catch(() => undefined)
+          if (pane && clicks.read(event)) void port.run(focusPaneArgv(pane), 5000).catch(() => undefined)
+        }
+      })
+      .then(
+        () => {
+          watching = 'no'
+        },
+        () => {
+          // No dbus-monitor, or no session bus: notifications go on without it.
+          watching = 'failed'
+        },
+      )
   }
 
   /**
@@ -1099,6 +1167,12 @@ export const register: Register = (on, options) => {
   const detectPlatform = async (port: Io, os: string | undefined, root: string): Promise<void> => {
     try {
       platform = os === 'Windows_NT' ? 'windows' : platformOfUname(await port.run(['uname', '-sr'], 5000))
+      if (platform === 'linux') {
+        const terminal = await port.terminal()
+        isGhostty = terminal.program === 'ghostty'
+        zellijPane = zellijPaneOf(terminal.zellijSession, terminal.zellijPane)
+        watchBus(port)
+      }
       await choosePlayer(port, root)
     } catch {
       player = { kind: 'none' }
@@ -1312,6 +1386,7 @@ export const register: Register = (on, options) => {
     io ? io.usage().catch(() => limits) : limits
 
   on('session.start', async ($, e, next) => {
+    folder = folderOf(e.cwd)
     const port: Io = {
       now: () => $.clock.now(),
       after: (ms, fn) => $.clock.after(ms, fn),
@@ -1368,6 +1443,18 @@ export const register: Register = (on, options) => {
       },
       pipe: async (argv, stdin, timeoutMs) => {
         await $.process.run(argv, { stdin, timeoutMs })
+      },
+      terminal: async () => ({
+        program: await $.env.get('TERM_PROGRAM'),
+        zellijSession: await $.env.get('ZELLIJ_SESSION_NAME'),
+        zellijPane: await $.env.get('ZELLIJ_PANE_ID'),
+      }),
+      notify: async (text, title) => {
+        const sent = await $.ui.notify(text, { title })
+        return sent.isSent ? sent.channel : null
+      },
+      watch: async (argv, onText) => {
+        for await (const piece of $.process.spawn({ argv })) onText(piece.text)
       },
     }
     io = port
@@ -1815,6 +1902,26 @@ export const register: Register = (on, options) => {
   const awayAtom = atom({ plugin: 'pixlings', key: 'isAway' } as const, false)
   const AWAY_KEY = 'away'
   const ROOM_ID = 'pixling-room'
+  /** Opens the room, `/pixling room` and the band's door alike; the band drops its door while it is up. */
+  type RoomPort = {
+    open: (pane: { id: string; title: string }) => Promise<{ isPlaced: true } | { isPlaced: false; reason: string }>
+    markOpen: () => Promise<unknown>
+  }
+  const openRoom = async (port: RoomPort, name: string): Promise<string> => {
+    const title = `${name}'s room`
+    try {
+      const opened = await port.open({ id: ROOM_ID, title })
+      await port.markOpen()
+      return opened.isPlaced ? `${title} is open.` : `${title} opens once there is space for it: ${opened.reason}`
+    } catch {
+      return `${title} could not open here.`
+    }
+  }
+  on('ui.close', async ($, e, next) => {
+    const closed = await next(e)
+    if (e.id === ROOM_ID) await update($, roomOpenAtom, () => false)
+    return closed
+  })
   const quipMode = String(options['quips'] ?? 'off')
   const QUIP_PRIORITY: Readonly<Record<QuipKind, number>> = {
     testFail: PRIORITY.testFail,
@@ -2075,15 +2182,8 @@ export const register: Register = (on, options) => {
           { save: away => $.store.set(AWAY_KEY, away), redraw: () => $.ui.invalidate('ui.render') },
           sub.toLowerCase() === 'off',
         )
-      case 'room': {
-        const title = `${pixling.name}'s room`
-        try {
-          const opened = await $.ui.open({ id: ROOM_ID, title })
-          return { text: opened.isPlaced ? `${title} is open.` : `${title} opens once there is space for it: ${opened.reason}` }
-        } catch {
-          return { text: `${title} could not open here.` }
-        }
-      }
+      case 'room':
+        return { text: await openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name) }
       case 'badges': {
         const p = pixling
         return { text: [`Badges ${earnedBadges(p).length}/${BADGES.length}`, ...BADGES.map(b => badgeLine(b, p))].join('\n') }
@@ -2254,6 +2354,13 @@ export const register: Register = (on, options) => {
     await read($, hatchAtom)
     const rawPersona = await read($, roomPersona)
     const persona = personaLine(rawPersona)
+    // Read to redraw when the room opens or closes; the engine's list of panes is the truth, as a
+    // close by the pane's own mark may never reach this plugin's hooks.
+    await read($, roomOpenAtom)
+    const isRoomOpen = await $.ui
+      .panes()
+      .then(panes => panes.some(pane => pane.id === ROOM_ID && pane.isPlaced && pane.isShown))
+      .catch(() => false)
     bandColumns = e.props.bodyColumns
     const s = speciesById(v.speciesId) ?? SPECIES[0]!
     const color = hex(RARITY_COLOR[s.rarity])
@@ -2381,7 +2488,8 @@ export const register: Register = (on, options) => {
     }
 
     const info = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], kit: RoomKit) => (
-      <Box flexDirection="column" marginLeft={1} flexShrink={1} width={width}>
+      // Keyed, so it is the card's hover scope: the pointer over the stats opens it, not over the sprite.
+      <Box key="stats" flexDirection="column" marginLeft={1} flexShrink={1} width={width}>
         {blocks.map(block =>
           block.kind === 'bubble' ? (
             <Box borderStyle="round" borderColor={color} paddingX={1} width={width} flexDirection="column">
@@ -2419,21 +2527,68 @@ export const register: Register = (on, options) => {
       </Box>
     )
 
+    /**
+     * The sprite in a hover scope of its own: under the pointer, a door on its bottom row that
+     * opens the room, laid over it so it moves nothing. With the room open, the sprite alone.
+     */
+    const doorway = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], sprite: ReturnType<Kit['Box']>, columns: number, rows: number) =>
+      isRoomOpen ? (
+        sprite
+      ) : (
+        <Box key="sprite" flexShrink={0} width={columns} height={rows}>
+          {sprite}
+          <Box position="absolute" bottom={0} left={0} width={columns} display="none" hover={{ display: 'flex' }} flexDirection="row" justifyContent="center">
+            {/* Keyed, so the door's own Texts restyle while the pointer is on it. */}
+            <Box key="door">
+              <Button key="open-room" label={`open ${v.name}'s room`} plain onPress={() => {
+                  // Opened in the press itself, before any await: an open that answers the person's
+                  // press is placed at any width, one after it waits for a 144-column terminal.
+                  // The door always lets you in at Home, whatever shelf was on show last.
+                  void openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, v.name).catch(() => undefined)
+                  void update($, roomAtom, () => ({ tab: 'home' })).catch(() => undefined)
+                }}>
+                {/* A brown door one cell wide with a brass knob, a cell of the fill either side that
+                    turns, under the pointer, into a black half block against the door, its frame,
+                    with the Button's lit ink on the outer half as under the label. The surface
+                    inverts a Button under the pointer, so every hover color is given swapped:
+                    inverted, the door looks the same, the frame shows, the label lights. */}
+                <Text color={CARD_FILL} backgroundColor={CARD_FILL} hover={{ color: CARD_INK, backgroundColor: DOOR_FRAME }}>
+                  {'▐'}
+                </Text>
+                <Text color={DOOR_KNOB} backgroundColor={DOOR} hover={{ color: DOOR, backgroundColor: DOOR_KNOB }}>
+                  {'•'}
+                </Text>
+                <Text color={CARD_FILL} backgroundColor={CARD_FILL} hover={{ color: CARD_INK, backgroundColor: DOOR_FRAME }}>
+                  {'▌'}
+                </Text>
+                {columns >= 10 ? (
+                  <Text color={CARD_INK} backgroundColor={CARD_FILL}>
+                    {'room '}
+                  </Text>
+                ) : null}
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      )
+
     if (e.surface === 'terminal') {
       const { Box, Text, Button, Raster, Image } = $.ui.resolve(e)
       bandId = e.requestId ?? null
       if (form.kind === 'image') {
+        const picture = <Image key={imageKey(form)} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={form.rows} flexShrink={0} alt=" " />
         return (
           <Box key="band" flexDirection="row" alignItems="flex-end">
-            <Image key={imageKey(form)} source={{ png: pictureSource(frame, form) }} columns={form.columns} rows={form.rows} flexShrink={0} alt=" " />
+            {doorway(Box, Text, Button, picture, form.columns, form.rows)}
             {info(Box, Text, Button, { Box, Text, Button, Raster })}
           </Box>
         )
       }
       const raster = rasterOf(bandPixels(form, frame))
+      const sprite = <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} flexShrink={0} />
       return (
         <Box key="band" flexDirection="row" alignItems="flex-end">
-          <Raster key={RASTER_KEY} columns={raster.columns} rows={raster.rows} cells={raster.cells} flexShrink={0} />
+          {doorway(Box, Text, Button, sprite, raster.columns, raster.rows)}
           {info(Box, Text, Button, { Box, Text, Button, Raster })}
           {probe(Image)}
         </Box>

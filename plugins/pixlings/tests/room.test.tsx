@@ -166,7 +166,8 @@ const textOf = (tree: unknown): string =>
 
 /** The Box the surface shows only under the pointer: drawn `display: none`, revealed by hover. */
 const hoverReveal = (tree: RenderElement): Node | undefined =>
-  elements(tree).find(n => n.type === 'Box' && n.props?.['display'] === 'none' && (n.hover ?? (n.props?.['hover'] as Record<string, unknown> | undefined))?.['display'] === 'flex')
+  // The stats' reveal, the card.
+  elements(elements(tree).find(n => n.props?.['key'] === 'stats') ?? tree).find(n => n.type === 'Box' && n.props?.['display'] === 'none' && (n.hover ?? (n.props?.['hover'] as Record<string, unknown> | undefined))?.['display'] === 'flex')
 
 describe('the room', () => {
   test('shows the pixling big, its card and a pet Button on every surface', { timeoutMs: LONG }, async ($, on) => {
@@ -411,6 +412,8 @@ describe('the band', () => {
       // Never narrower than the info rows it lies over.
       const column = elements(tree).find(n => (n.children ?? []).includes(card as never))
       expect(Number(card?.props?.['width']), surface).toBeGreaterThanOrEqual(Number(column?.props?.['width']))
+      // The info rows are its hover scope, so the pointer over the sprite leaves it shut.
+      expect(column?.props?.['key'], surface).toBe('stats')
       // Not drawn until hovered: the plain band reads as before.
       expect(await ui.find({ type: 'Text', text: 'Quackers' }), surface).toBeDefined()
       await ui.unmount()
@@ -442,6 +445,67 @@ describe('the band', () => {
       expect(reveal?.props?.['flexShrink'], surface).toBe(0)
       await ui.unmount()
     }
+  })
+
+  test('hovering the sprite shows a door to the room, gone while the room is open', { timeoutMs: LONG }, async ($, on) => {
+    const { clock } = host(on, DUCK)
+    const opened: { id: string; title?: string }[] = []
+    on('ui.open', ($, e) => {
+      opened.push(e)
+      return { value: { isPlaced: true } } as never
+    })
+    const closed: string[] = []
+    on('ui.close', ($, e) => {
+      closed.push(e.id)
+      return { value: undefined } as never
+    })
+    // The engine's record of the open panes: the room is up between an open and a close.
+    on('ui.panes', () => {
+      const isUp = opened.length > closed.length
+      return { value: isUp ? [{ id: ROOM_ID, title: "Quackers's room", isShown: true, isFocused: false, isPlaced: true }] : [] } as never
+    })
+    await start($)
+    await clock.advance(3000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    const doorOf = (tree: RenderElement) => elements(tree).find(n => n.type === 'Button' && n.props?.['key'] === 'open-room')
+    const tree = await ui.drawn()
+    // Its own hover scope, apart from the stats, and only the door shows under the pointer.
+    const sprite = elements(tree).find(n => n.props?.['key'] === 'sprite')
+    const reveal = elements(sprite).find(n => n.type === 'Box' && n.props?.['display'] === 'none')
+    expect(reveal?.props?.['position']).toBe('absolute')
+    expect(
+      elements(reveal)
+        .filter(n => n.type === 'Text')
+        .map(n => (n.children ?? []).join(''))
+        .join(''),
+    ).toBe('▐•▌room ')
+    expect(doorOf(tree)).toBeDefined()
+    await ui.press({ key: 'open-room' })
+    expect(opened).toEqual([expect.objectContaining({ id: ROOM_ID, title: "Quackers's room" })])
+    await ui.redraw()
+    const open = await ui.drawn()
+    expect(doorOf(open)).toBeUndefined()
+    expect(elements(open).some(n => n.props?.['key'] === 'sprite')).toBe(false)
+    // Closed again on another shelf (by the pane's own mark, so only the engine's panes say so), the door is back.
+    const room = await $.ui.mount(pane('terminal', 60))
+    await room.press({ key: 'tab-badges' })
+    await room.unmount()
+    closed.push(ROOM_ID)
+    await ui.redraw()
+    expect(doorOf(await ui.drawn())).toBeDefined()
+    // And it lets you in at Home again.
+    await ui.press({ key: 'open-room' })
+    const again = await $.ui.mount(pane('terminal', 60))
+    const home = elements(await again.drawn()).find(n => n.type === 'Button' && n.props?.['key'] === 'tab-home')
+    expect(home?.props?.['variant']).toBe('primary')
+    await again.unmount()
+    // Closed by the pane's own mark, which this plugin may never hear of: the door is back anyway.
+    await ui.redraw()
+    expect(doorOf(await ui.drawn())).toBeUndefined()
+    closed.push(ROOM_ID)
+    await ui.redraw()
+    expect(doorOf(await ui.drawn())).toBeDefined()
+    await ui.unmount()
   })
 
   for (const band of ['full', 'minimal'] as const) {

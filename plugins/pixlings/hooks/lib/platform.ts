@@ -55,9 +55,24 @@ export const macNotification = (title: string, body: string): string[] => [
   `display notification ${appleQuote(body)} with title ${appleQuote(title)}`,
 ]
 
-export const linuxNotification = (title: string, body: string): string[] => ['notify-send', '--app-name=Pixlings', title, body]
+/**
+ * Prints the id of the notification it raises (`-p`), and takes the place of `replaces`, the last
+ * one's id, so unread notifications never stack.
+ */
+export const linuxNotification = (title: string, body: string, replaces?: string): string[] => [
+  'notify-send',
+  '--app-name=Pixlings',
+  '--print-id',
+  ...(replaces && /^\d+$/.test(replaces) ? [`--replace-id=${replaces}`] : []),
+  '--',
+  title,
+  body,
+]
 
-export const notificationArgv = (platform: Platform, title: string, body: string): string[] | null => {
+/** The id `notify-send --print-id` printed; undefined when it printed none. */
+export const notificationIdOf = (stdout: string): string | undefined => stdout.trim().split('\n')[0]?.match(/^\d+$/)?.[0]
+
+export const notificationArgv = (platform: Platform, title: string, body: string, replaces?: string): string[] | null => {
   switch (platform) {
     case 'mac':
       return macNotification(title, body)
@@ -65,7 +80,7 @@ export const notificationArgv = (platform: Platform, title: string, body: string
     case 'wsl':
       return windowsToast(title, body)
     case 'linux':
-      return linuxNotification(title, body)
+      return linuxNotification(title, body, replaces)
     case 'unknown':
       return null
   }

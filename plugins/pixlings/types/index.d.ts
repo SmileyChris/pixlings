@@ -91,6 +91,8 @@ declare module 'claude-code' {
       effect: PixlingsEffect
       // W7
       room: PixlingsRoom
+      /** The room is open: the band leaves out its door to it. */
+      isRoomOpen: boolean
     }
   }
 }
