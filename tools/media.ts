@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { renderFrame, renderHatch, TRANSPARENT } from '../plugins/pixlings/hooks/lib/canvas.ts'
+import { renderFrame, renderHatch, SHINE_MS, TRANSPARENT } from '../plugins/pixlings/hooks/lib/canvas.ts'
 import type { Face, Hat, Mood, Neck, Pixels } from '../plugins/pixlings/hooks/lib/canvas.ts'
 import { FACE_IDS, NECK_IDS } from '../plugins/pixlings/hooks/lib/gear.ts'
 import { UNLOCKS } from '../plugins/pixlings/hooks/lib/progress.ts'
@@ -62,12 +62,13 @@ const clips: Clip[] = [
   },
   {
     name: 'shiny',
-    frames: 30,
+    // One shine beat, the species staggered evenly across it, so each glints once, in turn.
+    frames: SHINE_MS / 100,
     ms: 100,
     columns: 6,
-    cells: SPECIES.map(s => ({
+    cells: SPECIES.map((s, i) => ({
       label: s.name,
-      at: t => renderFrame({ species: s, isShiny: true, mood: 'happy', t: t + s.id.length * 130 }),
+      at: t => renderFrame({ species: s, isShiny: true, mood: 'happy', t: t + (i * SHINE_MS) / SPECIES.length }),
     })),
   },
   {

@@ -7,27 +7,29 @@ import { join } from 'node:path'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from '../plugins/pixlings/hooks/lib/card.ts'
 import { encodePng } from '../plugins/pixlings/hooks/lib/png.ts'
 import type { Pixling } from '../plugins/pixlings/hooks/lib/progress.ts'
-import { emptyDay, emptyStats } from '../plugins/pixlings/hooks/lib/progress.ts'
+import { emptyDay, emptyStats, revive } from '../plugins/pixlings/hooks/lib/progress.ts'
 
 const NOW = Date.parse('2026-10-03T12:00:00Z')
 
-const base = (over: Partial<Pixling>): Pixling => ({
-  v: 1,
-  species: 'blip',
-  isShiny: false,
-  name: 'Mochi',
-  hatchedAt: Date.parse('2026-09-01T10:00:00Z'),
-  xp: 0,
-  hat: null,
-  face: null,
-  stats: emptyStats(),
-  dex: ['blip'],
-  badges: {},
-  streak: { last: '2026-10-03', days: 1, best: 1 },
-  day: emptyDay('2026-10-03'),
-  tics: {},
-  ...over,
-})
+// Through revive, as an old save loads: fields added since get their defaults.
+const base = (over: Partial<Pixling>): Pixling =>
+  revive({
+    v: 1,
+    species: 'blip',
+    isShiny: false,
+    name: 'Mochi',
+    hatchedAt: Date.parse('2026-09-01T10:00:00Z'),
+    xp: 0,
+    hat: null,
+    face: null,
+    stats: emptyStats(),
+    dex: ['blip'],
+    badges: {},
+    streak: { last: '2026-10-03', days: 1, best: 1 },
+    day: emptyDay('2026-10-03'),
+    tics: {},
+    ...over,
+  })!
 
 const samples: Record<string, Pixling> = {
   fresh: base({ species: 'duck', name: 'Quackers', xp: 12, hatchedAt: NOW - 3_600_000 }),
@@ -45,6 +47,10 @@ const samples: Record<string, Pixling> = {
     species: 'dragon',
     isShiny: true,
     name: 'Ember',
+    // The README's card: the wizard hat it has worn there, nothing on its face or neck.
+    hat: 'wizard',
+    face: 'none',
+    neck: 'none',
     xp: 26000,
     stats: { ...emptyStats(), turns: 5120, commits: 640, bugsSquashed: 120, testsPassed: 980, prs: 77 },
     streak: { last: '2026-10-03', days: 41, best: 41 },

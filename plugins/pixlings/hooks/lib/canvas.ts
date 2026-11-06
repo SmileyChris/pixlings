@@ -389,7 +389,7 @@ const drawSparkles = (p: Pixels, ox: number, t: number, colors: readonly number[
 // body, like a foil card tilted, and glints one edge it crosses; otherwise one rim pixel glints,
 // leaning toward the top left where the light is. Each beat rolls its own tilt and flare.
 
-const SHINE_MS = 4500
+export const SHINE_MS = 4500
 const SHEEN_CHANCE = 0.15
 const SHEEN_MS = 500
 /** The band's half-width, in pixels across its travel. */
