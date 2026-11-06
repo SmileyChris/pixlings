@@ -1,8 +1,13 @@
 import { atom, read, update } from 'claude-code'
-import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
+import type { Elements, EngineInterface, PromptOrigin, PromptSubmitInput, Register, Timer } from 'claude-code'
 
-import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
+import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto, PixlingsEffortPick, PixlingsEffortShift, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
+import { createAuto, readAutoConfig } from './effort/auto.ts'
+import type { Auto } from './effort/auto.ts'
+import { askHaiku } from './effort/haiku.ts'
+import { cacheSafe, contextFrom } from './effort/judge.ts'
+import type { Effort } from './effort/judge.ts'
 import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
 import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
@@ -108,6 +113,10 @@ const roomOpenAtom = atom({ plugin: 'pixlings', key: 'isRoomOpen' } as const, fa
  * kept or the room closes: the nest shows only for that pixling, never for one that came after.
  */
 const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, null as number | null)
+// Auto effort's pick, switch and last shift (task 6's band reads them). A reload of this module keeps them in `$.state`.
+const effortPickAtom = atom({ plugin: 'pixlings', key: 'effortPick' } as const, null as PixlingsEffortPick)
+const effortAutoAtom = atom({ plugin: 'pixlings', key: 'effortAuto' } as const, true as PixlingsEffortAuto)
+const effortShiftAtom = atom({ plugin: 'pixlings', key: 'effortShift' } as const, null as PixlingsEffortShift)
 
 const STORE_KEY = 'pixling'
 /** Where a save this version cannot read is copied before the session runs without saving. */
@@ -265,6 +274,75 @@ type Io = {
   watch: (argv: string[], onText: (text: string) => void) => Promise<void>
 }
 
+/** What Pixlings last typed into the prompt box, and whether the person was told to press Enter (once a session). */
+type Typing = { last: string; isTold: boolean }
+
+/**
+ * Types `/effort <level>` into the prompt box for the person to send with Enter. A command the person sends is read by the
+ * app itself, so its own Effort control follows; one run inside the engine is not. Copied from Effortless's `typeCommand`.
+ * Never overwrites a draft of the person's: it does nothing when the box is not empty.
+ */
+async function typeEffort($: EngineInterface, level: Effort, typing: Typing): Promise<void> {
+  const text = `/effort ${level}`
+  try {
+    const draft = (await $.prompt.read()).text.trim()
+    // A draft of your own is never overwritten; the mod's own earlier command is replaced.
+    if (draft !== '' && draft !== typing.last) return
+    const filled = await $.prompt.fill({ text })
+    if (filled.isFilled) typing.last = text
+    if (filled.isFilled && !typing.isTold) {
+      typing.isTold = true
+      $.ui.toast(`Press Enter to send ${text} so the app's own control follows`)
+    }
+  } catch {
+    // Never into a turn.
+  }
+}
+
+/** The skill or custom command a typed "/name args" runs, or nothing for the app's own commands and Pixlings'. Copied from Effortless's `typedSkill`. */
+async function typedSkill($: EngineInterface, text: string): Promise<{ name: string; description: string } | undefined> {
+  const name = text.trim().slice(1).split(/\s+/)[0]
+  if (!name) return undefined
+  const found = (await $.command.list().catch(() => [])).find(c => c.name === name)
+  if (!found || !['user', 'plugin', 'mcp'].includes(found.source) || found.plugin === 'pixlings') return undefined
+  return { name, description: found.description ?? '' }
+}
+
+/** Auto effort looks at the prompt before it goes on, and never changes or holds it back (a judge that fails costs at most its own timeout). */
+async function judgePrompt($: EngineInterface, e: PromptSubmitInput, auto: Auto): Promise<void> {
+  try {
+    const kind = e.origin?.kind
+    const isPerson = kind === 'composer' || kind === 'bridge' || kind === 'sdk'
+    if (!isPerson) return
+    const isSlash = e.text.trim().startsWith('/')
+    const skill = isSlash ? await typedSkill($, e.text) : undefined
+    const modelId = await $.session.model()
+    // Nothing to decide on other models, for the app's own commands, or while Auto is off: no need to read the conversation.
+    if (!cacheSafe(modelId) || (isSlash && !skill) || !auto.view().isAuto) return
+    const context = contextFrom(await $.session.messages().catch(() => []))
+    const attachments = e.attachments ?? []
+    // The band draws "judging" while Haiku is out.
+    await Promise.resolve($.ui.invalidate('ui.render')).catch(() => undefined)
+    try {
+      await auto.onPrompt({
+        text: e.text,
+        isPerson,
+        ...(skill ? { skill } : {}),
+        isSlash,
+        hasAttachments: attachments.length > 0,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        modelId,
+        context,
+        midTurn: e.turnId !== undefined,
+      })
+    } finally {
+      await Promise.resolve($.ui.invalidate('ui.render')).catch(() => undefined)
+    }
+  } catch {
+    // Never into a prompt.
+  }
+}
+
 export const register: Register = (on, options) => {
   const soundMode = String(options['sound'] ?? 'all')
   const bandMode = String(options['band'] ?? 'full')
@@ -279,6 +357,10 @@ export const register: Register = (on, options) => {
   const wantsRoam = options['roam'] !== false
   const isCalm = options['calm'] === true
   const voiceMode = String(options['voice'] ?? 'animalese')
+  const autoConfig = readAutoConfig(options)
+  // Auto effort for this session, built when it starts (it needs the session's `$`); null before then.
+  let auto: Auto | null = null
+  const typing: Typing = { last: '', isTold: false }
 
   // The engine's clock is the one timers run on; Date.now() is synced to it every second so
   // reading the time stays synchronous (a frame is drawn ten times a second).
@@ -1429,6 +1511,33 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     folder = folderOf(e.cwd)
+    auto = createAuto({
+      now,
+      setState: async p => {
+        if (p.pick !== undefined) await update($, effortPickAtom, () => p.pick ?? null)
+        if (p.isAuto !== undefined) await update($, effortAutoAtom, () => p.isAuto ?? true)
+        if (p.shift !== undefined) await update($, effortShiftAtom, () => p.shift ?? null)
+      },
+      // A value never written reads as undefined by its reference, which tells "unset" from a real one after a reload of this module.
+      readState: async () => {
+        const [pick, isAuto, shift] = await Promise.all([
+          read($, { plugin: 'pixlings', key: 'effortPick' } as const),
+          read($, { plugin: 'pixlings', key: 'effortAuto' } as const),
+          read($, { plugin: 'pixlings', key: 'effortShift' } as const),
+        ])
+        return {
+          ...(pick === undefined ? {} : { pick }),
+          ...(isAuto === undefined ? {} : { isAuto }),
+          ...(shift === undefined ? {} : { shift }),
+        }
+      },
+      store: { get: key => $.store.get(key), set: async (key, value) => $.store.set(key, value) },
+      toast: text => $.ui.toast(text),
+      typeEffort: level => typeEffort($, level, typing),
+      ask: async (prompt, current, context) => askHaiku(request => $.model.complete(request), prompt, current, context, contextPercent),
+      cfg: autoConfig,
+    })
+    await auto.load().catch(() => undefined)
     const port: Io = {
       now: () => $.clock.now(),
       after: (ms, fn) => $.clock.after(ms, fn),
@@ -1655,6 +1764,7 @@ export const register: Register = (on, options) => {
       }
       if (isNamedIn(e.text)) maybeQuip('named')
     }
+    if (auto && autoConfig.isOn) await judgePrompt($, e, auto)
     return next(e)
   })
 
@@ -1671,12 +1781,15 @@ export const register: Register = (on, options) => {
 
   on('turn.step', async function* ($, e, next) {
     const sentAt = now()
+    // Auto effort: the level the request goes out at, if it is not the app's own.
+    const level = auto?.requestEffort({ modelId: e.model, effort: e.effort, ...(e.agentId === undefined ? {} : { agentId: e.agentId }) })
+    const sent = level ? { ...e, effort: level } : e
     if (e.agentId === undefined) {
-      // The model and effort the main loop's request names: the vitals row's last piece.
-      model = e.model
-      effort = e.effort
+      // The model and effort the main loop's request names: the vitals row's last piece. The effort actually sent.
+      model = sent.model
+      effort = sent.effort
     }
-    const result = yield* next(e)
+    const result = yield* next(sent)
     if (e.agentId === undefined && pixling) {
       // The pixling watches; it never breaks a turn.
       await afterStep(result.usage, result.answer, sentAt).catch(() => undefined)
@@ -1723,6 +1836,8 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     if (e.agentId !== undefined) return result
     isWorking = false
+    // A lower level held for a message typed during the turn takes over now.
+    await auto?.onTurnEnd()
     if (quotaBefore !== null) {
       const before = quotaBefore
       quotaBefore = null
@@ -1891,6 +2006,7 @@ export const register: Register = (on, options) => {
   })
 
   on('classic.PostModelSwitch', async ($, e, next) => {
+    // Auto effort needs nothing here: its request check already notices the model changed (effortless 1.72.0, register.tsx ~4190).
     const port = io
     if (port && pixling) {
       const at = now()

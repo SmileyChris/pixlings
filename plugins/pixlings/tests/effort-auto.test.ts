@@ -126,9 +126,11 @@ type Fake = {
   /** What the judge answers, in turn; null (didn't answer) once they run out. */
   verdicts: Answer[]
   clock: { now: number }
+  /** What the engine's state still holds across a hook reload; nothing at a first load. */
+  kept: { pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }
 }
 
-const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; verdicts?: Answer[] } = {}): Fake => {
+const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; verdicts?: Answer[]; kept?: Fake['kept'] } = {}): Fake => {
   const f: Fake = {
     state: {},
     stored: opts.stored ?? new Map(),
@@ -138,6 +140,7 @@ const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; 
     asked: [],
     verdicts: [...(opts.verdicts ?? [])],
     clock: { now: 1_000 },
+    kept: opts.kept ?? {},
     deps: undefined as unknown as AutoDeps,
   }
   f.deps = {
@@ -152,6 +155,7 @@ const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; 
         f.stored.set(k, v)
       },
     },
+    readState: async () => f.kept,
     toast: t => {
       f.toasts.push(t)
     },
@@ -281,6 +285,27 @@ describe('createAuto', () => {
     const again = createAuto(fake({ stored }).deps)
     await again.load()
     expect(again.view().isAuto).toBe(true)
+  })
+
+  test('the session-only failure survives a hook reload', async () => {
+    const stored = new Map<string, unknown>([['effortAuto', true]])
+    const failed = fake({ stored })
+    const auto = createAuto(failed.deps)
+    await auto.load()
+    await auto.onPrompt(facts())
+    expect(failed.state.isAuto).toBe(false)
+    // The hook reloads: closure state is gone, the engine's state is not, and the store still says Auto is on.
+    const reloaded = createAuto(fake({ stored, kept: failed.state }).deps)
+    await reloaded.load()
+    expect(reloaded.view().isAuto).toBe(false)
+    expect(reloaded.view().pick).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+    expect(reloaded.requestEffort({ modelId: 'claude-opus-5-5', effort: 'high' })).toBe('medium')
+  })
+
+  test('a reload with nothing kept loads from the store as before', async () => {
+    const reloaded = createAuto(fake({ stored: new Map([['effortAuto', true]]), kept: {} }).deps)
+    await reloaded.load()
+    expect(reloaded.view().isAuto).toBe(true)
   })
 
   test('a second prompt while the judge is out keeps the level', async () => {

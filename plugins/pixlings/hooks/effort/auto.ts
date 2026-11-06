@@ -91,6 +91,8 @@ export function settle(verdict: Verdict, cfg: AutoConfig): { effort: Effort; why
 export type AutoDeps = {
   now(): number
   setState(p: { pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }): Promise<void>
+  /** What the engine's state still holds when the hook module reloads (closure state is lost, state is not); unset slots are undefined. */
+  readState(): Promise<{ pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }>
   store: { get(k: string): Promise<unknown>; set(k: string, v: unknown): Promise<void> }
   toast(t: string): void
   /** Types `/effort <level>` into the app, so its own setting follows a click. */
@@ -216,15 +218,31 @@ export function createAuto(deps: AutoDeps) {
   return {
     /** Auto's switch and, while Auto is off, the pick in force, as the person last left them. */
     async load(): Promise<void> {
-      const [storedAuto, storedPick] = await Promise.all([read('effortAuto'), read('effortPick')])
-      if (typeof storedAuto === 'boolean') isAuto = storedAuto
-      // Auto off means the level the person chose should still be the one in force.
-      const carried = storedAuto === false ? readStoredPick(storedPick) : null
-      if (carried) {
-        pick = carried
-        pickCarried = true
+      let kept: Awaited<ReturnType<AutoDeps['readState']>> = {}
+      try {
+        kept = (await deps.readState()) ?? {}
+      } catch {
+        kept = {}
       }
-      await quiet(() => deps.setState(carried ? { isAuto, pick: carried } : { isAuto }))
+      const [storedAuto, storedPick] = await Promise.all([read('effortAuto'), read('effortPick')])
+      // A reload of the hook keeps the session's own state, which outranks the store: Haiku not answering turned Auto
+      // off for this session only, and the store still holds the person's switch.
+      if (typeof kept.isAuto === 'boolean') isAuto = kept.isAuto
+      else if (typeof storedAuto === 'boolean') isAuto = storedAuto
+      const keptPick = readStoredPick(kept.pick)
+      if (keptPick) {
+        // This session's own pick, met already: not a carried one.
+        pick = keptPick
+      } else if (!isAuto) {
+        // Auto off means the level the person chose should still be the one in force.
+        const carried = readStoredPick(storedPick)
+        if (carried) {
+          pick = carried
+          pickCarried = true
+        }
+      }
+      if (kept.shift && typeof kept.shift.until === 'number') shift = kept.shift
+      await quiet(() => deps.setState(pick ? { isAuto, pick } : { isAuto }))
     },
 
     /** Decides the prompt's level before it goes out; the prompt itself is never changed or held back. */
