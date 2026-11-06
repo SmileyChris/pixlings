@@ -238,6 +238,27 @@ describe('the room', () => {
     await ui.unmount()
   })
 
+  test('a pet waits 20 minutes: the Button hides, /pixling pet says how long', { timeoutMs: LONG }, async ($, on) => {
+    const { clock, db } = host(on, DUCK)
+    await start($)
+    await clock.advance(10_000)
+    const ui = await $.ui.mount(pane('vscode', 60))
+    await ui.press({ key: 'pet' })
+    await clock.advance(1000)
+    expect(await ui.find({ type: 'Button', key: 'pet' })).toBeUndefined()
+    const early = await $.command.run({ command: 'pixling', args: 'pet' } as never)
+    expect(early.text).toMatch(/^Quackers is still glowing from the last pet\. Again in (19|20)m\.$/)
+    expect((db.get('pixling') as { stats: { pets: number } }).stats.pets).toBe(4)
+    await ui.unmount()
+    for (let i = 0; i < 20; i++) await clock.advance(60_000)
+    const later = await $.ui.mount(pane('vscode', 60))
+    expect(await later.find({ type: 'Button', key: 'pet' })).toBeDefined()
+    expect((await $.command.run({ command: 'pixling', args: 'pet' } as never)).text).toContain('You pet Quackers')
+    // Five pets: an acquaintance now, on the card.
+    expect(await later.find({ type: 'Text', text: ' Acquaintance' })).toBeDefined()
+    await later.unmount()
+  })
+
   test('it sits by its seat: side by side when wide, stacked on a phone or a slim pane', { timeoutMs: LONG }, async ($, on) => {
     const { clock } = host(on, DUCK)
     await start($)

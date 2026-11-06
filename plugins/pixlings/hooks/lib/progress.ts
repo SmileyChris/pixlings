@@ -59,6 +59,8 @@ export type Pixling = {
   /** Its one-line personality: a template's, or an adopted Buddy's own. */
   persona: string
   adoptedFrom: AdoptedFrom | null
+  /** When it was last petted; another pet waits PET_COOLDOWN_MS. */
+  pettedAt: number | null
 }
 
 export const emptyStats = (): Stats => ({
@@ -123,6 +125,7 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
     hat: null,
     face: null,
     stats: emptyStats(),
+    pettedAt: null,
     dex: [...new Set([...dex, species.id])],
     badges: {},
     streak: { last: null, days: 0, best: 0 },
@@ -236,6 +239,7 @@ export const revive = (value: unknown): Pixling | null => {
     hat: v.hat ?? null,
     face: v.face ?? null,
     stats: { ...emptyStats(), ...(v.stats ?? {}) },
+    pettedAt: typeof v.pettedAt === 'number' ? v.pettedAt : null,
     dex: Array.isArray(v.dex) ? v.dex.filter((d): d is string => typeof d === 'string') : [v.species],
     badges: isRecord(v.badges) ? numbersOf(v.badges) : {},
     streak: isRecord(v.streak)
@@ -331,6 +335,7 @@ export const mergeSave = (stored: Pixling, base: Pixling | null, ours: Pixling):
     face: pick(stored.face, since.face, ours.face),
     xp: Math.max(0, stored.xp + ours.xp - since.xp),
     stats: moved(stored.stats, since.stats, ours.stats) as Stats,
+    pettedAt: Math.max(stored.pettedAt ?? 0, ours.pettedAt ?? 0) || null,
     day: mergeDay(stored.day, since.day, ours.day),
     ...person,
   }
@@ -351,6 +356,32 @@ export const xpBar = (into: number, need: number, width: number): string => {
 
 /** When the person met this pixling: an adopted Buddy's hatch, else its own. */
 export const metAt = (p: Pixling): number => p.adoptedFrom?.hatchedAt ?? p.hatchedAt
+
+/** How close it is to you, by the pets it has had: never goes down. Best friend is the Best Friends badge. */
+export const FRIENDSHIP: readonly { readonly pets: number; readonly name: string }[] = [
+  { pets: 0, name: 'Stranger' },
+  { pets: 5, name: 'Acquaintance' },
+  { pets: 15, name: 'Pal' },
+  { pets: 35, name: 'Friend' },
+  { pets: 60, name: 'Close friend' },
+  { pets: 100, name: 'Best friend' },
+]
+
+export type Friendship = { readonly tier: number; readonly name: string; readonly hearts: string; readonly next: number | null }
+
+/** Its friendship at `pets`: the tier (0–5), its name, five hearts filled to it, and the pets to the next. */
+export const friendshipOf = (pets: number): Friendship => {
+  const tier = FRIENDSHIP.reduce((at, f, i) => (pets >= f.pets ? i : at), 0)
+  const up = FRIENDSHIP[tier + 1]
+  return { tier, name: FRIENDSHIP[tier]!.name, hearts: '♥'.repeat(tier) + '♡'.repeat(FRIENDSHIP.length - 1 - tier), next: up ? up.pets - pets : null }
+}
+
+/** Between pets: a pet is a moment, not a button to hold down. */
+export const PET_COOLDOWN_MS = 20 * 60_000
+
+/** How long until it can be petted again; 0 when it can be now. */
+export const petWait = (p: Pick<Pixling, 'pettedAt'>, now: number): number =>
+  p.pettedAt === null ? 0 : Math.max(0, p.pettedAt + PET_COOLDOWN_MS - now)
 
 export const daysTogether = (p: Pixling, now: number): number =>
   Math.max(1, Math.floor((now - metAt(p)) / 86_400_000) + 1)

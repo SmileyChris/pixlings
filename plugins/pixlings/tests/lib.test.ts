@@ -6,7 +6,7 @@ import type { Mood } from '../hooks/lib/canvas.ts'
 import { blockingWindow, formatDuration, iconFor, isTestCommand, riskOf, testOutcome } from '../hooks/lib/detect.ts'
 import { allLines, say } from '../hooks/lib/lines.ts'
 import { assetPath, linuxPlayer, macNotification, platformOfUname, windowsPlayer, windowsToast } from '../hooks/lib/platform.ts'
-import { gain, gearOf, hatchPixling, levelOf, revive, roll, xpForLevel } from '../hooks/lib/progress.ts'
+import { friendshipOf, gain, gearOf, hatchPixling, levelOf, revive, roll, xpForLevel } from '../hooks/lib/progress.ts'
 import { base64, encodeCells, rasterOf, toCells, toSvg } from '../hooks/lib/raster.ts'
 import { checkSpecies, SPECIES } from '../hooks/lib/sprites.ts'
 
@@ -221,5 +221,14 @@ describe('platform', () => {
     expect(platformOfUname('Linux 6.8.0')).toBe('linux')
     expect(assetPath('C:\\plugins\\pixlings', 'sounds/a.wav', 'windows')).toBe('C:\\plugins\\pixlings\\sounds\\a.wav')
     expect(assetPath('/opt/p/', 'sounds/a.wav', 'linux')).toBe('/opt/p/sounds/a.wav')
+  })
+})
+
+describe('friendship', () => {
+  test('friendship climbs with pets, five hearts at 100', () => {
+    expect(friendshipOf(0)).toEqual({ tier: 0, name: 'Stranger', hearts: '♡♡♡♡♡', next: 5 })
+    expect(friendshipOf(14)).toMatchObject({ tier: 1, name: 'Acquaintance', next: 1 })
+    expect(friendshipOf(35)).toMatchObject({ tier: 3, name: 'Friend', hearts: '♥♥♥♡♡' })
+    expect(friendshipOf(250)).toEqual({ tier: 5, name: 'Best friend', hearts: '♥♥♥♥♥', next: null })
   })
 })

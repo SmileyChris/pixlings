@@ -29,6 +29,8 @@ export type LineKey =
   | 'lateNight'
   | 'levelUp'
   | 'unlock'
+  | 'petClose'
+  | 'friendUp'
   | 'pet'
   | 'rename'
   | 'doze'
@@ -144,6 +146,8 @@ const LINES: Record<LineKey, readonly string[]> = {
   levelUp: ['Level {level}! I feel... pixelier.', 'LEVEL {level}!', 'Ding! Level {level}.'],
   unlock: ['Unlocked {item}! How do I look?', 'New look: {item}!', 'I got {item}! Fancy.'],
   pet: ['♥', 'Hehe.', 'Again!', '*purrs?*', 'Best developer.', '*happy wiggle*'],
+  petClose: ['♥♥♥', 'My favourite human.', '*leans into your hand*', 'Never stop.', 'You again! Yay!', 'I saved you a pixel.'],
+  friendUp: ['{label} now! ♥', 'Friendship up: {label}! ♥', 'We are {label} status. ♥'],
   rename: ['{name}? I love it!', 'Call me {name}!', '{name}. Has a nice ring to it.'],
   doze: ['*yawn*', 'Just resting my eyes...'],
   absolutelyRight: [

@@ -47,6 +47,8 @@ import {
   levelOf,
   mergeSave,
   rehatch,
+  friendshipOf,
+  petWait,
   revive,
   UNLOCKS,
   xpBar,
@@ -322,7 +324,6 @@ export const register: Register = (on, options) => {
   let turnVerb: string | null = null
   let turnPast: string | null = null
   let lastLimitAt = 0
-  let petsToday = 0
   let saidLateNight = ''
   let warnedWindows = new Set<string>()
   let lastMoodShown: Mood = 'idle'
@@ -2148,10 +2149,27 @@ export const register: Register = (on, options) => {
 
   const pet = async (): Promise<{ text: string }> => {
     if (!pixling) return { text: 'Your egg has not hatched yet.' }
-    petsToday += 1
+    // Another terminal may have petted it since this one last saved: the store has the latest pet.
+    const stored = io ? revive(await io.load().catch(() => null)) : null
+    const last = Math.max(pixling.pettedAt ?? 0, stored?.hatchedAt === pixling.hatchedAt ? (stored.pettedAt ?? 0) : 0) || null
+    const wait = petWait({ pettedAt: last }, now())
+    if (wait > 0) return { text: `${pixling.name} is still glowing from the last pet. Again in ${Math.ceil(wait / 60_000)}m.` }
+    const was = friendshipOf(pixling.stats.pets)
+    pixling = { ...pixling, pettedAt: now() }
     count('pets')
-    await express({ mood: 'love', priority: PRIORITY.pet, holdMs: 2600, line: 'pet', sound: 'pet' })
-    if (petsToday <= 20) await grant('pet')
+    const is = friendshipOf(pixling.stats.pets)
+    // Closer friends get warmer words, half the time; a new tier is said out loud.
+    const line = is.tier > was.tier ? 'friendUp' : is.tier >= 3 && Math.random() < 0.5 ? 'petClose' : 'pet'
+    await express({
+      mood: 'love',
+      priority: PRIORITY.pet,
+      holdMs: 2600,
+      line,
+      slots: { label: is.name },
+      sound: is.tier > was.tier ? 'badge' : 'pet',
+      isImportant: is.tier > was.tier,
+    })
+    await grant('pet')
     return { text: `You pet ${pixling.name}. ♥` }
   }
 
@@ -2694,12 +2712,17 @@ export const register: Register = (on, options) => {
       `Prompt cache: ${hit === null ? 'no requests yet' : `${hit}% served from cache`} · lives ${cache.ttl === '1h' ? 'an hour' : '5 minutes'}${cache.isTtlKnown ? '' : ' (assumed)'} · ${cache.coldStarts} cold start(s) this session`,
       '/pixling share saves this as a trading card · /pixling badges',
     ]
+    const friend = friendshipOf(p.stats.pets)
     const header = (Box: Kit['Box'], Text: Kit['Text']) => (
       <Box flexDirection="column" marginLeft={2} flexShrink={1}>
         <Text bold color={color}>
           {p.name.toUpperCase()}
         </Text>
         <Text>{`${s.name} · ${RARITY_STARS[s.rarity]} ${s.rarity}${p.isShiny ? ' · ✦ shiny' : ''}`}</Text>
+        <Box flexDirection="row" flexWrap="wrap">
+          <Text color="#ff4d8d">{friend.hearts}</Text>
+          <Text dimColor>{` ${friend.name}${friend.next !== null ? ` · ${friend.next} pet${friend.next === 1 ? '' : 's'} to the next` : ''}`}</Text>
+        </Box>
         <Box flexDirection="row">
           <Text color={color}>{xpBar(into, need, 16)}</Text>
           <Text dimColor>{` Lv ${level} · ${into}/${need} xp`}</Text>
