@@ -576,3 +576,56 @@ describe('createAuto', () => {
     expect(auto.view().isAuto).toBe(false)
   })
 })
+
+describe('nextEffort: the level the next main-loop request carries', () => {
+  const opus = 'claude-opus-5-5'
+  const fable = 'claude-fable-5-1'
+
+  test('Auto off after it picked high while the app is at medium: the app’s medium', async () => {
+    const auto = await withPick(fake(), 'high')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    expect(auto.nextEffort(opus)).toBe('high')
+    await auto.toggleAuto()
+    expect(auto.nextEffort(opus)).toBe('medium')
+    // The same as the request then carries: the app's own.
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+  })
+
+  test('a manual pick on a model Auto does not steer: the app’s own level', async () => {
+    const auto = createAuto(fake().deps)
+    await auto.load()
+    await auto.pickLevel('low')
+    expect(auto.requestEffort({ modelId: fable, effort: 'high' })).toBeUndefined()
+    expect(auto.nextEffort(fable)).toBe('high')
+    expect(auto.nextEffort(opus)).toBe('low')
+  })
+
+  test('on opus with Auto on and a pick of high: high', async () => {
+    const auto = await withPick(fake(), 'high')
+    expect(auto.nextEffort(opus)).toBe('high')
+  })
+
+  test('nothing known: undefined; a thinking budget is not a level', async () => {
+    const auto = createAuto(fake().deps)
+    await auto.load()
+    expect(auto.nextEffort(opus)).toBeUndefined()
+    auto.requestEffort({ modelId: opus, effort: 32_000 })
+    expect(auto.nextEffort(opus)).toBeUndefined()
+  })
+
+  test('after a switch to another model the app’s effort there is not known yet', async () => {
+    const auto = createAuto(fake().deps)
+    await auto.load()
+    auto.requestEffort({ modelId: opus, effort: 'xhigh' })
+    expect(auto.nextEffort(opus)).toBe('xhigh')
+    expect(auto.nextEffort('claude-sonnet-5-5')).toBeUndefined()
+  })
+
+  test('it changes nothing: asking twice, then a request, steers as before', async () => {
+    const auto = await withPick(fake(), 'high')
+    auto.nextEffort('claude-sonnet-5-5')
+    auto.nextEffort(opus)
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    expect(auto.view().isAuto).toBe(true)
+  })
+})

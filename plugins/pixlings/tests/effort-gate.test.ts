@@ -5,7 +5,7 @@ import { describe, expect } from 'claude-code/testing'
 import type { Effort } from '../hooks/effort/judge.ts'
 import { EFFORTS } from '../hooks/effort/judge.ts'
 import type { GateSeg } from '../hooks/effort/gate.ts'
-import { gateEffort, gateRow, miniGate } from '../hooks/effort/gate.ts'
+import { gateRow, miniGate } from '../hooks/effort/gate.ts'
 import { test } from './kit.ts'
 
 const text = (segs: GateSeg[]): string => segs.map((s) => s.text).join('')
@@ -250,28 +250,5 @@ describe('miniGate: the gate for slim and minimal', () => {
     const segs = miniGate({ effort: undefined, isAuto: true })
     expect(segs.slice(0, 5).every((s) => s.role === 'stop')).toBe(true)
     expect(segs.some((s) => s.role === 'active')).toBe(false)
-  })
-})
-
-describe('the level the gate shows', () => {
-  const pick = (effort: Effort, by: 'haiku' | 'named' | 'manual') => ({ effort, why: 'because', by })
-
-  test('a pick in force: a manual one always, Auto’s while Auto is on', () => {
-    expect(gateEffort({ pick: pick('xhigh', 'manual'), isAuto: false, appEffort: 'low' })).toBe('xhigh')
-    expect(gateEffort({ pick: pick('xhigh', 'manual'), isAuto: true, appEffort: 'low' })).toBe('xhigh')
-    expect(gateEffort({ pick: pick('high', 'haiku'), isAuto: true, appEffort: 'low' })).toBe('high')
-    expect(gateEffort({ pick: pick('max', 'named'), isAuto: true, appEffort: undefined })).toBe('max')
-  })
-
-  test('otherwise the app’s own effort, the one the next request carries', () => {
-    expect(gateEffort({ pick: pick('high', 'haiku'), isAuto: false, appEffort: 'low' })).toBe('low')
-    expect(gateEffort({ pick: null, isAuto: true, appEffort: 'medium' })).toBe('medium')
-    expect(gateEffort({ pick: null, isAuto: false, appEffort: 'max' })).toBe('max')
-  })
-
-  test('nothing when the app’s effort is not one of the five levels', () => {
-    expect(gateEffort({ pick: null, isAuto: true, appEffort: undefined })).toBeUndefined()
-    expect(gateEffort({ pick: null, isAuto: true, appEffort: 32_000 })).toBeUndefined()
-    expect(gateEffort({ pick: pick('high', 'haiku'), isAuto: false, appEffort: 'ultra' })).toBeUndefined()
   })
 })

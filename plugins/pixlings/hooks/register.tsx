@@ -5,11 +5,11 @@ import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto,
 import type { PixlingsPersona } from '../types'
 import { createAuto, readAutoConfig } from './effort/auto.ts'
 import type { Auto } from './effort/auto.ts'
-import { gateEffort, gateRow, miniGate } from './effort/gate.ts'
+import { gateRow, miniGate } from './effort/gate.ts'
 import { gateElements } from './effort/gate-view.ts'
 import type { GateActions } from './effort/gate-view.ts'
 import { askHaiku } from './effort/haiku.ts'
-import { cacheSafe, contextFrom } from './effort/judge.ts'
+import { cacheSafe, contextFrom, EFFORTS } from './effort/judge.ts'
 import type { Effort } from './effort/judge.ts'
 import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
 import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, MINI_GATE_COLUMNS, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
@@ -927,8 +927,10 @@ export const register: Register = (on, options) => {
   const refreshVitals = async (at: number): Promise<void> => {
     const port = io
     if (!port || !wantsVitals) return
-    // With Auto effort on, the gate shows the level wherever the vitals show (the band, the room).
-    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, hideEffort: autoConfig.isOn, turnDelta, isCalm })
+    // With Auto effort on, the gate shows the level wherever the vitals show (the band, the room); a thinking budget,
+    // which it cannot show, stays in the vitals.
+    const hideEffort = autoConfig.isOn && EFFORTS.some(level => level === effort)
+    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, hideEffort, turnDelta, isCalm })
     const key = pieces.map(v => `${v.text}:${v.tone}`).join('|')
     if (key !== lastVitals) {
       lastVitals = key
@@ -2706,9 +2708,18 @@ export const register: Register = (on, options) => {
   /** The one redraw that fades a shift's arrows: replaced, never stacked, when a newer shift comes. */
   const gateFade: GateFade = { current: null }
 
-  /** What the effort gate shows, from its state in `$.state`; the level is the one the next request carries. */
+  /**
+   * What the effort gate shows, from its state in `$.state`. Its level is the one the next main-loop request carries,
+   * as Auto would send it on the last model the main loop asked for; nothing before Auto loads or any request.
+   */
   const gateOf = (state: GateState | null, at: number): GateView | null =>
-    state && { effort: gateEffort({ pick: state.pick, isAuto: state.isAuto, appEffort: effort }), isAuto: state.isAuto, why: state.pick?.why ?? '', shift: state.shift, now: at }
+    state && {
+      effort: auto && model !== undefined ? auto.nextEffort(model) : undefined,
+      isAuto: state.isAuto,
+      why: state.pick?.why ?? '',
+      shift: state.shift,
+      now: at,
+    }
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const v = await read($, view)

@@ -261,6 +261,54 @@ describe('the effort gate in the band', () => {
     await ui.unmount()
   })
 
+  test('turning Auto off after it sent high shows the app’s own medium: the level the next request carries', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock, reached } = host(on, ['high'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    // The app is at medium; Auto's high goes out.
+    await ask($, 'refactor the auth module', 'medium')
+    expect(reached).toEqual(['high'])
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await ui.find({ type: 'Text', text: '●H' }), surface).toBeDefined()
+      await ui.press({ key: 'effort-auto' })
+      await clock.advance(10)
+      await ui.redraw()
+      expect(await ui.find({ type: 'Text', text: '●M' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '●H' }), surface).toBeUndefined()
+      // Auto on again for the next surface: its pick is in force once more.
+      await ui.press({ key: 'effort-auto' })
+      await clock.advance(10)
+      await ui.redraw()
+      expect(await ui.find({ type: 'Text', text: '●H' }), surface).toBeDefined()
+      await ui.unmount()
+    }
+    // What the gate said is what goes out.
+    await ask($, 'go on', 'medium')
+    expect(reached.at(-1)).toBe('high')
+  })
+
+  test('a thinking budget the gate cannot show stays in the vitals', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on)
+    await $.session.start(START)
+    await clock.advance(3000)
+    const stream = $.turn.step({ turnId: 't', index: 0, model: 'claude-opus-5-5', effort: 32_000, messageCount: 3 } as never)
+    for await (const _ of stream) {
+      // drain
+    }
+    await stream.result
+    await clock.advance(1000)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      const all = await texts(ui)
+      expect(all.some(t => /opus 5\.5 · 32k$/.test(t)), surface).toBe(true)
+      // The gate is there, with no level lit.
+      expect(all, surface).toContain('effort')
+      expect(all.some(t => t.startsWith('●')), surface).toBe(false)
+      await ui.unmount()
+    }
+  })
+
   test('on desktop a press does the same', { options: { band: 'compact', roam: false } }, async ($, on) => {
     const { clock, filled } = host(on, ['low'])
     await $.session.start(START)
@@ -401,7 +449,8 @@ describe('the effort gate in the band', () => {
     await ask($, 'refactor the auth module')
     // A sixth of 36 rows is 6: room for two lines of speech under the shared name row, the vitals and the gate. Counted
     // without the gate, the picture would grow to 3 rows of speech and name and keep its own 4, and the speech be cut.
-    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 48 }, viewport: { columns: 48, rows: 36 }, surface: 'terminal' })
+    // At 40 columns the column is 26 wide, so each of the three rename lines (picked at random) wraps to two lines.
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 40 }, viewport: { columns: 40, rows: 36 }, surface: 'terminal' })
     await clock.advance(1000)
     await $.command.run({ command: 'pixling', args: 'name Bartholomew Quackington the Third of Puddle Lane' } as never)
     await clock.advance(10)
@@ -411,7 +460,9 @@ describe('the effort gate in the band', () => {
     expect(spoken).toHaveLength(2)
     expect(spoken.join(' ')).toContain('Bartholomew')
     expect(all.some(t => t.trimEnd().endsWith('…'))).toBe(false)
-    expect(all).toContain('effort')
+    // The gate row, its label left off at this width.
+    expect(all).toContain('●H')
+    expect(await ui.find({ type: 'Button', key: 'effort-auto' } as never)).toBeDefined()
     await ui.unmount()
   })
 })

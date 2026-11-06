@@ -4,7 +4,6 @@
 //   effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"      full gate, in `full` and `compact`
 //   LMHXM A                                                            mini gate, in `slim` and `minimal`
 
-import type { PixlingsEffortPick } from '../../types'
 import { EFFORTS } from './judge.ts'
 import type { Effort } from './judge.ts'
 
@@ -97,13 +96,4 @@ export function miniGate(v: { effort: Effort | undefined; isAuto: boolean }): Ga
     ...EFFORTS.map((level): GateSeg => ({ text: MINI_STOP[level], role: level === v.effort ? 'active' : 'stop', level })),
     { text: ' A', role: v.isAuto ? 'autoOn' : 'auto' },
   ]
-}
-
-/**
- * The level the gate shows: the one the next request carries. A pick in force (a manual one, or Auto's while Auto
- * is on) is sent; otherwise the request goes as the app made it, at the app's own effort, if that is one of the five.
- */
-export function gateEffort(v: { pick: PixlingsEffortPick; isAuto: boolean; appEffort: string | number | undefined }): Effort | undefined {
-  if (v.pick && (v.pick.by === 'manual' || v.isAuto)) return v.pick.effort
-  return EFFORTS.find((e) => e === v.appEffort)
 }

@@ -180,6 +180,18 @@ export function createAuto(deps: AutoDeps) {
     return pick.by === 'manual' || isAuto ? pick : undefined
   }
 
+  /**
+   * Whether a request on this model is on another model than the last one Auto saw. The app's effort can differ per
+   * model, so the one seen so far was the other model's.
+   */
+  const isOtherModel = (modelId: string): boolean => {
+    const key = keyOf(modelId)
+    return key !== undefined && key !== model
+  }
+
+  /** The app's own effort on this model as last seen, or undefined when it is not known there yet. */
+  const appEffort = (modelId: string): Effort | undefined => (isOtherModel(modelId) ? undefined : engineEffort)
+
   const steer = (r: RequestFacts): Effort | undefined => {
     // A subagent of a turn Auto picked for runs at that turn's level, but never below medium (Effortless helperFloor).
     // A manual pick leaves subagents as the app sends them.
@@ -191,10 +203,9 @@ export function createAuto(deps: AutoDeps) {
     }
     // The app's effort can differ per model, so a change across a model switch is not the person's, and a carried
     // pick has met this session (Effortless modelIs, whose choose clears pickCarried).
-    const key = keyOf(r.modelId)
-    if (key && key !== model) {
+    if (isOtherModel(r.modelId)) {
       if (model !== undefined) pickCarried = false
-      model = key
+      model = keyOf(r.modelId)
       engineEffort = undefined
     }
     if (isEffort(r.effort)) {
@@ -289,6 +300,19 @@ export function createAuto(deps: AutoDeps) {
       if (!cfg.isOn) return undefined
       try {
         return steer(r)
+      } catch {
+        return undefined
+      }
+    },
+
+    /**
+     * The level the next main-loop request on this model carries, as `requestEffort` would send it: the pick in force,
+     * else the app's own as last seen there. Undefined when that is not known, or not one of the five levels. No side
+     * effects: a change the app makes is only seen when its request comes.
+     */
+    nextEffort(modelId: string): Effort | undefined {
+      try {
+        return (cfg.isOn ? enforced(modelId)?.effort : undefined) ?? appEffort(modelId)
       } catch {
         return undefined
       }
