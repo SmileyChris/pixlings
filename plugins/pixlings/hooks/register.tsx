@@ -12,7 +12,8 @@ import { adopt, cleanName, companionOf, configPath, speciesNamed } from './lib/b
 import type { Companion } from './lib/buddy.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from './lib/card.ts'
 import { blank, CANVAS_W, HATCH_MS, layoutFor, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
-import type { Face, Hat, Icon, MiniView, Mood, Pixels } from './lib/canvas.ts'
+import type { Icon, MiniView, Mood, Pixels } from './lib/canvas.ts'
+import { FACE_IDS, isFace, isHat, isNeck, NECK_IDS } from './lib/gear.ts'
 import { blockingWindow, clockTime, formatDuration, iconFor, isTestCommand, linesWritten, riskOf, runsGitCommit, testOutcome } from './lib/detect.ts'
 import type { LimitWindow, Risk } from './lib/detect.ts'
 import { say } from './lib/lines.ts'
@@ -53,10 +54,12 @@ import {
   petWait,
   revive,
   shinyEggOf,
+  DROP_ODDS,
   UNLOCKS,
+  unlockedAt,
   xpBar,
 } from './lib/progress.ts'
-import type { Day, Pixling, Stats, XpEvent } from './lib/progress.ts'
+import type { Day, Pixling, Stats, Unlock, XpEvent } from './lib/progress.ts'
 import { base64, rasterOf, toSvg } from './lib/raster.ts'
 import { isWalking, newWalker, placeIn, rescale, roamRange, walk } from './lib/roam.ts'
 import type { RoamMode, Walker } from './lib/roam.ts'
@@ -401,7 +404,7 @@ export const register: Register = (on, options) => {
     if (viewKey(pixling) !== viewKey(shown)) await publishView()
   }
 
-  const viewKey = (p: Pixling): string => `${p.species}|${p.isShiny}|${p.name}|${p.xp}|${p.hat}|${p.face}`
+  const viewKey = (p: Pixling): string => `${p.species}|${p.isShiny}|${p.name}|${p.xp}|${p.hat}|${p.face}|${p.neck}|${p.kept.join(',')}`
 
   /** A save this version cannot read (a newer version's, or damaged): copied aside, left alone. */
   const readOnly = async (raw: unknown): Promise<void> => {
@@ -419,7 +422,7 @@ export const register: Register = (on, options) => {
   const publishView = async (): Promise<void> => {
     if (!io || !pixling) return
     const { level, into, need } = levelOf(pixling.xp)
-    const { hat, face } = gearOf(pixling)
+    const { hat, face, neck } = gearOf(pixling)
     await io.setView({
       name: pixling.name,
       speciesId: pixling.species,
@@ -429,6 +432,7 @@ export const register: Register = (on, options) => {
       xpNeed: need,
       hat,
       face,
+      neck,
     })
     await publishPersona()
   }
@@ -705,10 +709,10 @@ export const register: Register = (on, options) => {
   const frameAt = (at: number): Pixels => {
     const s = species()
     const p = pixling
-    const { hat, face } = p ? gearOf(p) : { hat: null, face: null }
+    const { hat, face, neck } = p ? gearOf(p) : { hat: null, face: null, neck: null }
     if (p && hatchAt !== null && at - hatchAt < HATCH_MS + 2600) {
       return renderHatch(
-        { species: s, isShiny: p.isShiny, mood: 'celebrate', t: Math.max(0, at - hatchAt), hat, face },
+        { species: s, isShiny: p.isShiny, mood: 'celebrate', t: Math.max(0, at - hatchAt), hat, face, neck },
         RARITY_COLOR[s.rarity],
       )
     }
@@ -725,6 +729,7 @@ export const register: Register = (on, options) => {
       t: isStepping ? at : at - since,
       hat,
       face,
+      neck,
       icon: activeIcon,
       isCalm,
       width: CANVAS_W + range,
@@ -740,7 +745,10 @@ export const register: Register = (on, options) => {
   }
 
   /** The canvas's height in the pixling's gear: a tall hat adds headroom. */
-  const canvasH = (): number => layoutFor(species(), pixling ? gearOf(pixling).hat : null).h
+  const canvasH = (): number => {
+    const gear = pixling ? gearOf(pixling) : null
+    return layoutFor(species(), gear?.hat, gear?.neck).h
+  }
 
   /**
    * Canvas pixels to a column of the band as it draws (`walkScale`); 0 where it does not walk.
@@ -2100,14 +2108,13 @@ export const register: Register = (on, options) => {
     return { text: `${p.name} is back.` }
   }
 
-  const WEARABLES = UNLOCKS.map(u => u.hat ?? u.face).join('|')
   const HELP = [
     "/pixling — your pixling's card",
     '/pixling share — save a trading card PNG to show it off',
     '/pixling badges — the badges, earned and still to earn',
     '/pixling pet — pet it',
     '/pixling name <name> — rename it',
-    `/pixling wear <${WEARABLES}|none> — change its look`,
+    '/pixling wear [item|random|none] — the wardrobe; an item puts it on, or takes it off if worn; random picks a look',
     '/pixling dex — the species you have hatched',
     '/pixling hatch — release it and hatch a new egg (level and stats reset; badges, streak and dex stay)',
     '/pixling adopt [species] — bring back your old /buddy: its name, personality and days together (read locally)',
@@ -2255,28 +2262,75 @@ export const register: Register = (on, options) => {
       case 'wear': {
         const item = arg.toLowerCase()
         const level = levelOf(pixling.xp).level
+        const p = pixling
+        const have = unlockedAt(p, level)
+        const idOf = (u: Unlock): string => u.hat ?? u.face ?? u.neck ?? ''
+        const ownedIds = have.map(idOf)
         if (item === '') {
-          // No item named: show the wardrobe, change nothing.
-          const p = pixling
-          const rows = UNLOCKS.map(u => {
-            const name = u.hat ?? u.face ?? ''
-            const isOn = gearOf(p).hat === name || gearOf(p).face === name
-            return `${u.level <= level ? (isOn ? '● ' : '○ ') : '🔒 '}${name.padEnd(7)} ${u.label}${u.level <= level ? '' : ` (level ${u.level})`}`
-          })
-          return { text: [`${p.name}'s wardrobe (level ${level}). /pixling wear <item> or none:`, ...rows].join('\n') }
+          // No item named: show the wardrobe, change nothing. Only what it has: the rest is a surprise.
+          const worn = gearOf(p)
+          const row = (u: Unlock): string =>
+            `${worn.hat === idOf(u) || worn.face === idOf(u) || worn.neck === idOf(u) ? '● ' : '○ '}${idOf(u).padEnd(8)} ${u.label}`
+          const group = (title: string, rows: Unlock[]): string[] => (rows.length ? [title, ...rows.map(row)] : [])
+          const nextHat = UNLOCKS.find(u => u.level > level)
+          const toFind = FACE_IDS.length + NECK_IDS.length - have.filter(u => u.face || u.neck).length
+          const still = [
+            nextHat ? `The next hat comes at level ${nextHat.level}.` : '',
+            toFind > 0 ? `${toFind} more face and neck ${toFind === 1 ? 'piece turns' : 'pieces turn'} up at random${level < DROP_ODDS.from ? ` from level ${DROP_ODDS.from}` : ''}.` : '',
+          ].filter(Boolean)
+          if (have.length === 0) return { text: [`${p.name} has nothing to wear yet (level ${level}).`, ...still].join('\n') }
+          return {
+            text: [
+              `${p.name}'s wardrobe (level ${level}). /pixling wear <item> puts it on or takes it off, random picks a look, none takes everything off:`,
+              ...group('Hats', have.filter(u => u.hat)),
+              ...group('Face', have.filter(u => u.face)),
+              ...group('Neck', have.filter(u => u.neck)),
+              ...still,
+            ].join('\n'),
+          }
         }
+        let reply: string
         if (item === 'none') {
-          pixling = { ...pixling, hat: 'none', face: 'none' }
+          pixling = { ...pixling, hat: 'none', face: 'none', neck: 'none' }
+          reply = `${p.name} takes everything off.`
+        } else if (item === 'random' && !ownedIds.includes('random')) {
+          // Each slot it has pieces for: one of them, or bare as one more choice. Never all bare, and a
+          // different look from now when there is one.
+          const of = (key: 'hat' | 'face' | 'neck'): string[] => have.flatMap(u => (u[key] ? [u[key]!] : []))
+          const pick = <T,>(xs: readonly T[]): T | null => (xs.length ? ([...xs, null][Math.floor(Math.random() * (xs.length + 1))] ?? null) : null)
+          const was = gearOf(p)
+          let look = was
+          for (let i = 0; i < 8; i++) {
+            look = { hat: pick(of('hat')) as typeof was.hat, face: pick(of('face')) as typeof was.face, neck: pick(of('neck')) as typeof was.neck }
+            const isBare = !look.hat && !look.face && !look.neck
+            if (!isBare && (look.hat !== was.hat || look.face !== was.face || look.neck !== was.neck)) break
+          }
+          if (have.length === 0) return { text: `${p.name} has nothing to wear yet.` }
+          if (!look.hat && !look.face && !look.neck) {
+            // Eight bare draws in a row: wear one piece it has, at random.
+            const u = have[Math.floor(Math.random() * have.length)]!
+            look = { hat: u.hat ?? null, face: u.face ?? null, neck: u.neck ?? null }
+          }
+          pixling = { ...pixling, hat: look.hat ?? 'none', face: look.face ?? 'none', neck: look.neck ?? 'none' }
+          const labels = [look.hat, look.face, look.neck].flatMap(id => have.filter(u => id && idOf(u) === id).map(u => u.label))
+          reply = `${p.name} is wearing ${labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0]} now.`
         } else {
-          const unlock = UNLOCKS.find(u => u.hat === item || u.face === item)
-          if (!unlock) return { text: `Unknown item "${arg}". Wearables: ${WEARABLES}, none.` }
-          if (unlock.level > level) return { text: `${unlock.label} unlocks at level ${unlock.level} (now ${level}).` }
-          pixling = unlock.hat ? { ...pixling, hat: unlock.hat as Hat } : { ...pixling, face: unlock.face as Face }
+          const piece = have.find(u => idOf(u) === item)
+          if (!piece) {
+            const choices = ownedIds.length ? `${ownedIds.join(', ')} or none` : 'nothing yet'
+            return { text: `${p.name} doesn't have "${arg}". It can wear: ${choices}.` }
+          }
+          // Wearing what it already wears takes it off.
+          const slot = isHat(item) ? 'hat' : isFace(item) ? 'face' : isNeck(item) ? 'neck' : null
+          if (!slot) return { text: `${p.name} can't wear "${arg}".` }
+          const isOn = gearOf(p)[slot] === item
+          pixling = { ...pixling, [slot]: isOn ? 'none' : item }
+          reply = isOn ? `${p.name} takes off ${piece.label}.` : `${p.name} is wearing ${piece.label} now.`
         }
         persist()
         await publishView()
         $.ui.invalidate('ui.render')
-        return { text: `${pixling.name} is wearing ${item || 'nothing'} now.` }
+        return { text: reply }
       }
       case 'dex':
         return { text: `${DEX_START}${pixling.dex.length}/${SPECIES.length} species hatched.` }
@@ -2350,7 +2404,7 @@ export const register: Register = (on, options) => {
     if (!p) return renderHatch({ species: SPECIES[0]!, isShiny: false, mood: 'idle', t: 200 }, RARITY_COLOR.common)
     if (isHatching(at)) return frameAt(at)
     const { mood, since } = currentMood(at)
-    const { hat, face } = gearOf(p)
+    const { hat, face, neck } = gearOf(p)
     return renderFrame({
       species: species(),
       isShiny: p.isShiny,
@@ -2358,6 +2412,7 @@ export const register: Register = (on, options) => {
       t: at - since,
       hat,
       face,
+      neck,
       icon: icon && at < icon.until ? icon.icon : null,
       isCalm,
     })
@@ -2706,8 +2761,8 @@ export const register: Register = (on, options) => {
 
     const persona = personaLine(await read($, roomPersona))
     const { level, into, need } = levelOf(p.xp)
-    const { hat, face } = gearOf(p)
-    const frame = renderFrame({ species: s, isShiny: p.isShiny, mood: 'happy', t: 0, hat, face })
+    const { hat, face, neck } = gearOf(p)
+    const frame = renderFrame({ species: s, isShiny: p.isShiny, mood: 'happy', t: 0, hat, face, neck })
     const st = p.stats
     const earned = earnedBadges(p)
     const heard = topTics(p.tics, 3)

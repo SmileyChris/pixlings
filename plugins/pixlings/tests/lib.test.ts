@@ -161,9 +161,9 @@ describe('progress', () => {
     expect(levelOf(30).level).toBe(2)
     expect(xpForLevel(12)).toBeGreaterThan(xpForLevel(11))
     let p = hatchPixling(seeded(3), 0)
-    expect(gearOf(p)).toEqual({ hat: null, face: null })
+    expect(gearOf(p)).toEqual({ hat: null, face: null, neck: null })
     p = { ...p, xp: xpForLevel(6) }
-    expect(gearOf(p)).toEqual({ hat: 'shroom', face: 'shades' })
+    expect(gearOf(p).hat).toBe('beanie')
     const { pixling, levelUp } = gain({ ...p, xp: xpForLevel(9) - 1 }, 'turn')
     expect(levelUp?.level).toBe(9)
     expect(levelUp?.unlocks.map(u => u.hat)).toEqual(['party'])

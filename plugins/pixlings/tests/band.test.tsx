@@ -1,3 +1,4 @@
+import { xpForLevel } from '../hooks/lib/progress.ts'
 import { describe, expect, mock } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
@@ -430,16 +431,37 @@ describe('the band', () => {
     expect(ran.some(r => r.argv.join(' ').includes('MemoryStream'))).toBe(false)
   })
 
-  test('/pixling wear with no item shows the wardrobe and changes nothing', async ($, on) => {
+  test('/pixling wear with no item shows the wardrobe, only what it has, and changes nothing', async ($, on) => {
     const { clock } = host(on, { ...DUCK, xp: 200 })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(3000)
     const shown = await $.command.run({ command: 'pixling', args: 'wear' } as never)
     expect(shown.text).toContain('wardrobe')
     expect(shown.text).toMatch(/● sprout/)
-    expect(shown.text).toMatch(/🔒 wizard/)
+    // What it hasn't got stays a surprise: no names, only when the next hat comes.
+    expect(shown.text).not.toMatch(/shroom|wizard|monocle|chain/)
+    expect(shown.text).toContain('The next hat comes at level 4.')
     const again = await $.command.run({ command: 'pixling', args: 'wear' } as never)
     expect(again.text).toMatch(/● sprout/)
+    const locked = await $.command.run({ command: 'pixling', args: 'wear wizard' } as never)
+    expect(locked.text).toBe(`${DUCK.name} doesn't have "wizard". It can wear: sprout or none.`)
+  })
+
+  test('/pixling wear on what it wears takes it off; random picks from what it has', async ($, on) => {
+    const { clock } = host(on, { ...DUCK, xp: xpForLevel(13) })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const on1 = await $.command.run({ command: 'pixling', args: 'wear party' } as never)
+    expect(on1.text).toBe(`${DUCK.name} is wearing a party hat now.`)
+    const off = await $.command.run({ command: 'pixling', args: 'wear party' } as never)
+    expect(off.text).toBe(`${DUCK.name} takes off a party hat.`)
+    expect((await $.command.run({ command: 'pixling', args: 'wear' } as never)).text).toMatch(/○ party/)
+    const looks = new Set<string>()
+    for (let i = 0; i < 40; i++) looks.add((await $.command.run({ command: 'pixling', args: 'wear random' } as never)).text)
+    expect(looks.size).toBeGreaterThan(1)
+    for (const text of looks) expect(text).toMatch(/is wearing .+ now\./)
+    // A slot may come up bare.
+    expect([...looks].some(text => !/sprout|mushroom cap|beanie|party hat|crown/.test(text))).toBe(true)
   })
 })
 

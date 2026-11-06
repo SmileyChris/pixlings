@@ -1,6 +1,6 @@
 // The pixling's life: hatching rolls, names, experience, levels and what each level unlocks.
 
-import type { Face, Hat } from './canvas.ts'
+import { FACE_IDS, NECK_IDS, type Face, type GearId, type Hat, type Neck } from './gear.ts'
 import { oneLine, personaFor } from './persona.ts'
 import { RARITY_ORDER, RARITY_WEIGHT, SPECIES } from './sprites.ts'
 import type { Rarity, Species } from './sprites.ts'
@@ -44,9 +44,12 @@ export type Pixling = {
   name: string
   hatchedAt: number
   xp: number
-  /** The hat and face gear chosen with `/pixling wear`; null picks the best unlocked. */
+  /** The gear chosen with `/pixling wear`; null wears the newest it has. */
   hat: Hat | 'none' | null
   face: Face | 'none' | null
+  neck: Neck | 'none' | null
+  /** Gear it keeps from before face gear dropped at random: sunglasses, for one past level 6. */
+  kept: GearId[]
   stats: Stats
   /** Every species this person has hatched, for the dex. */
   dex: string[]
@@ -131,6 +134,8 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
     xp: 0,
     hat: null,
     face: null,
+    neck: null,
+    kept: [],
     stats: emptyStats(),
     pettedAt: null,
     eggSeed: null,
@@ -213,28 +218,123 @@ export const levelOf = (xp: number): { level: number; into: number; need: number
 
 // Unlocks --------------------------------------------------------------------------------------
 
-export type Unlock = { level: number; hat?: Hat; face?: Face; label: string }
+export type Unlock = { level: number; hat?: Hat; face?: Face; neck?: Neck; label: string }
 
+/** Hats come at set levels; every other level may drop face gear or neckwear (dropsOf). */
 export const UNLOCKS: readonly Unlock[] = [
   { level: 2, hat: 'sprout', label: 'a sprout' },
   { level: 4, hat: 'shroom', label: 'a mushroom cap' },
-  { level: 6, face: 'shades', label: 'sunglasses' },
+  { level: 6, hat: 'beanie', label: 'a beanie' },
   { level: 9, hat: 'party', label: 'a party hat' },
   { level: 12, hat: 'crown', label: 'a crown' },
+  { level: 15, hat: 'chef', label: "a chef's hat" },
   { level: 18, hat: 'halo', label: 'a halo' },
   { level: 25, hat: 'wizard', label: 'a wizard hat' },
+  { level: 30, hat: 'cowboy', label: 'a cowboy hat' },
+  { level: 35, hat: 'viking', label: 'a viking helmet' },
+  { level: 42, hat: 'tophat', label: 'a top hat' },
+  { level: 50, hat: 'grad', label: 'a graduation cap' },
 ]
 
-export const unlockedAt = (level: number): Unlock[] => UNLOCKS.filter(u => u.level <= level)
+export const GEAR_LABELS: Readonly<Record<Face | Neck, string>> = {
+  shades: 'sunglasses',
+  monocle: 'a monocle',
+  visor: 'a visor',
+  '3d': '3D glasses',
+  eyepatch: 'an eyepatch',
+  chain: 'a chain',
+  bowtie: 'a bow tie',
+  medal: 'a medal',
+  scarf: 'a scarf',
+  bandana: 'a bandana',
+}
 
-export const gearOf = (p: Pixling): { hat: Hat | null; face: Face | null } => {
-  const { level } = levelOf(p.xp)
-  const open = unlockedAt(level)
-  const hats = open.flatMap(u => (u.hat ? [u.hat] : []))
-  const faces = open.flatMap(u => (u.face ? [u.face] : []))
-  const hat = p.hat === 'none' ? null : p.hat && hats.includes(p.hat) ? p.hat : (hats[hats.length - 1] ?? null)
-  const face = p.face === 'none' ? null : p.face && faces.includes(p.face) ? p.face : (faces[faces.length - 1] ?? null)
-  return { hat, face }
+/**
+ * How face gear and neckwear drop: from level `from`, each level without a hat has `chance` of a
+ * piece, doubled for every `doubleAfter` such levels in a row without one (0 never doubles). Each
+ * piece of the slot it has more of is `toward` times as likely, so a set fills before the other
+ * starts (1 picks evenly).
+ */
+export type DropOdds = { readonly chance: number; readonly doubleAfter: number; readonly from: number; readonly toward: number }
+export const DROP_ODDS: DropOdds = { chance: 0.1, doubleAfter: 4, from: 10, toward: 3 }
+
+/** The chance at a level after `dry` levels in a row without a drop. */
+export const chanceAfter = (odds: DropOdds, dry: number): number =>
+  Math.min(1, odds.chance * 2 ** (odds.doubleAfter > 0 ? Math.floor(dry / odds.doubleAfter) : 0))
+
+const HAT_LEVELS = new Set(UNLOCKS.map(u => u.level))
+const DROPPABLE: readonly (Face | Neck)[] = [...FACE_IDS, ...NECK_IDS]
+const isFacePiece = (id: string): boolean => (FACE_IDS as readonly string[]).includes(id)
+
+/** One of `left` for the roll `r` in [0, 1): each piece of the slot `owned` has more of `toward` times as likely. */
+const pickPiece = (left: readonly (Face | Neck)[], owned: ReadonlySet<string>, toward: number, r: number): Face | Neck => {
+  const faces = [...owned].filter(isFacePiece).length
+  const necks = owned.size - faces
+  const isMore = (id: string): boolean => (faces > necks ? isFacePiece(id) : necks > faces ? !isFacePiece(id) : false)
+  const weights = left.map(id => (isMore(id) ? toward : 1))
+  let at = r * weights.reduce((a, b) => a + b, 0)
+  for (let i = 0; i < left.length; i++) if ((at -= weights[i]!) < 0) return left[i]!
+  return left[left.length - 1]!
+}
+
+/** A roll in [0, 1) fixed by the egg and a level (or an XP step): every session and every replay agree. */
+const rollAt = (hatchedAt: number, level: number, salt: number): number => {
+  let x = Math.imul((hatchedAt % 0x7fffffff) ^ Math.imul(level, 0x9e3779b1) ^ salt, 0x85ebca6b)
+  x ^= x >>> 13
+  x = Math.imul(x, 0xc2b2ae35)
+  x ^= x >>> 16
+  return (x >>> 0) / 0x100000000
+}
+
+/**
+ * What dropped at each level up to `level`, in order: from `odds.from`, a level with no hat rolls
+ * `odds.chance` for a piece the pixling hasn't got, doubling after every `odds.doubleAfter` empty levels in a row, picked at
+ * random from the rest, leaning toward the slot it has more of. The rolls come from the egg, so they need no saving.
+ */
+export const dropsOf = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number, odds: DropOdds = DROP_ODDS): Unlock[] => {
+  const owned = new Set<string>(p.kept)
+  const out: Unlock[] = []
+  let dry = 0
+  for (let at = Math.max(2, odds.from); at <= level; at++) {
+    if (HAT_LEVELS.has(at)) continue
+    const left = DROPPABLE.filter(id => !owned.has(id))
+    if (left.length === 0) break
+    if (rollAt(p.hatchedAt, at, 1) >= chanceAfter(odds, dry)) {
+      dry++
+      continue
+    }
+    dry = 0
+    const id = pickPiece(left, owned, odds.toward, rollAt(p.hatchedAt, at, 2))
+    owned.add(id)
+    out.push(isFacePiece(id) ? { level: at, face: id as Face, label: GEAR_LABELS[id] } : { level: at, neck: id as Neck, label: GEAR_LABELS[id] })
+  }
+  return out
+}
+
+/** Everything the pixling has at `level`: hats by level, kept gear, and what dropped, in order. */
+export const unlockedAt = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number): Unlock[] => {
+  const kept = p.kept.flatMap((id): Unlock[] =>
+    (FACE_IDS as readonly string[]).includes(id)
+      ? [{ level: 0, face: id as Face, label: GEAR_LABELS[id as Face] }]
+      : (NECK_IDS as readonly string[]).includes(id)
+        ? [{ level: 0, neck: id as Neck, label: GEAR_LABELS[id as Neck] }]
+        : [],
+  )
+  return [...kept, ...UNLOCKS.filter(u => u.level <= level), ...dropsOf(p, level)].sort((a, b) => a.level - b.level)
+}
+
+export type Gear = { hat: Hat | null; face: Face | null; neck: Neck | null }
+
+/** What it wears: its choice when it has that piece, else the newest it got; 'none' for nothing. */
+export const gearOf = (p: Pixling): Gear => {
+  const open = unlockedAt(p, levelOf(p.xp).level)
+  const choose = <T extends string>(chosen: T | 'none' | null, have: T[]): T | null =>
+    chosen === 'none' ? null : chosen && have.includes(chosen) ? chosen : (have[have.length - 1] ?? null)
+  return {
+    hat: choose(p.hat, open.flatMap(u => (u.hat ? [u.hat] : []))),
+    face: choose(p.face, open.flatMap(u => (u.face ? [u.face] : []))),
+    neck: choose(p.neck, open.flatMap(u => (u.neck ? [u.neck] : []))),
+  }
 }
 
 /** Adds experience; returns the new pixling and the levels crossed, with what they unlocked. */
@@ -250,18 +350,9 @@ export const gain = (
   if (after <= before) return { pixling, levelUp: null, isShinyEgg }
   return {
     pixling,
-    levelUp: { level: after, unlocks: UNLOCKS.filter(u => u.level > before && u.level <= after) },
+    levelUp: { level: after, unlocks: unlockedAt(p, after).filter(u => u.level > before) },
     isShinyEgg,
   }
-}
-
-/** A roll in [0, 1) fixed by the egg and a step: every session and every replay agree. */
-const rollAt = (hatchedAt: number, step: number, salt: number): number => {
-  let x = Math.imul((hatchedAt % 0x7fffffff) ^ Math.imul(step, 0x9e3779b1) ^ salt, 0x85ebca6b)
-  x ^= x >>> 13
-  x = Math.imul(x, 0xc2b2ae35)
-  x ^= x >>> 16
-  return (x >>> 0) / 0x100000000
 }
 
 /**
@@ -297,6 +388,13 @@ export const revive = (value: unknown): Pixling | null => {
     xp: typeof v.xp === 'number' && v.xp >= 0 ? v.xp : 0,
     hat: v.hat ?? null,
     face: v.face ?? null,
+    neck: v.neck ?? null,
+    // A save from before gear dropped: sunglasses came at level 6, and one that had them keeps them.
+    kept: Array.isArray(v.kept)
+      ? v.kept.filter((id): id is GearId => typeof id === 'string')
+      : levelOf(typeof v.xp === 'number' ? v.xp : 0).level >= 6
+        ? ['shades']
+        : [],
     stats: { ...emptyStats(), ...(v.stats ?? {}) },
     pettedAt: typeof v.pettedAt === 'number' ? v.pettedAt : null,
     eggSeed: typeof v.eggSeed === 'number' ? v.eggSeed : null,
@@ -366,7 +464,7 @@ const mergeDay = (stored: Day, base: Day, ours: Day): Day => {
 /**
  * What to write when the store holds `stored`, this session loaded or last wrote `base` (null
  * before its first save) and holds `ours` now. A different `hatchedAt` is another egg: the later
- * hatch wins. Counters add up; name, hat and face are ours when we changed them; badges, the dex,
+ * hatch wins. Counters add up; name, hat, face and neck are ours when we changed them; badges, the dex,
  * the streak and the tics belong to the person and are merged across eggs.
  */
 export const mergeSave = (stored: Pixling, base: Pixling | null, ours: Pixling): Pixling => {
@@ -393,6 +491,8 @@ export const mergeSave = (stored: Pixling, base: Pixling | null, ours: Pixling):
     name: pick(stored.name, since.name, ours.name),
     hat: pick(stored.hat, since.hat, ours.hat),
     face: pick(stored.face, since.face, ours.face),
+    neck: pick(stored.neck, since.neck, ours.neck),
+    kept: [...new Set([...stored.kept, ...ours.kept])],
     xp: Math.max(0, stored.xp + ours.xp - since.xp),
     stats: moved(stored.stats, since.stats, ours.stats) as Stats,
     pettedAt: Math.max(stored.pettedAt ?? 0, ours.pettedAt ?? 0) || null,

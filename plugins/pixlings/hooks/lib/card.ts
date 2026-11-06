@@ -120,7 +120,7 @@ export const renderCard = (px: Pixling, now: number, t = 600): Pixels => {
   }
   frame(p, panel.x, panel.y, panel.w, panel.h, accent, 1)
   const gear = gearOf(px)
-  const sprite = renderFrame({ species, isShiny: px.isShiny, mood: 'happy', t, hat: gear.hat, face: gear.face })
+  const sprite = renderFrame({ species, isShiny: px.isShiny, mood: 'happy', t, hat: gear.hat, face: gear.face, neck: gear.neck })
   const scale = 3
   const sx = Math.round(panel.x + (panel.w - sprite.w * scale) / 2)
   const sy = panel.y + panel.h - 4 - sprite.h * scale

@@ -8,6 +8,7 @@ export type PixlingsView = {
   xpNeed: number
   hat: string | null
   face: string | null
+  neck: string | null
 }
 
 /** The speech bubble; `id` changes with every new line. */
