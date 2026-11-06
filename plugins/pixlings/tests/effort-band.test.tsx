@@ -626,6 +626,24 @@ describe('the effort gate in the band', () => {
     }
   })
 
+  test('a reason that does not fit whole is left off, never cut: the live width that showed auto: "Rea…"', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on, ['high'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    // The gate's row has the band's columns past the 22-column sprite, less 4: whole, its reason takes 53.
+    const whole = 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "judged high"'
+    for (const surface of SURFACES) {
+      for (const [columns, drawn] of [[79, whole], [78, 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A']] as const) {
+        const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: columns }, viewport: { columns, rows: 60 }, surface })
+        const text = strings(gateRowOf(await ui.drawn())!).join('')
+        expect(text, `${surface} ${columns}`).toBe(drawn)
+        expect(text, `${surface} ${columns}`).not.toContain('…')
+        await ui.unmount()
+      }
+    }
+  })
+
   for (const band of ['full', 'compact'] as const) {
     test(`${band}: a wide band gives Auto’s reason whole, in the room the band has past the column`, { options: { band, roam: false } }, async ($, on) => {
       const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])

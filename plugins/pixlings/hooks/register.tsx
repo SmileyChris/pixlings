@@ -2868,7 +2868,7 @@ export const register: Register = (on, options) => {
     const cardWidth = isBrief
       ? Math.max(width, e.props.bodyColumns - spriteColumns - 2)
       : Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - spriteColumns - 4))
-    // The gate's row may take the room the band has past the column, as the card does, so its reason is not cut to the
+    // The gate's row may take the room the band has past the column, as the card does, so its reason is not dropped at the
     // column's 56. The column widens as far as the gate's row needs and no further; every other row keeps the column's
     // own width, so none of them moves.
     const isGateRow = (block: (typeof blocks)[number]): boolean => block.kind === 'row' && block.parts.some(piece => piece.kind === 'gate')

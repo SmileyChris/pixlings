@@ -31,7 +31,6 @@ const KNOB = '●'
 const RAIL = ' ─ '
 const UP = ' → '
 const DOWN = ' ← '
-const ELLIPSIS = '…'
 const WHY_OPEN = 'auto: "'
 const WHY_CLOSE = '"'
 const GAP = '  '
@@ -53,17 +52,10 @@ function arrowsOf(v: GateView): { lo: number; hi: number; glyph: string } | null
   return { lo: Math.min(from, to), hi: Math.max(from, to), glyph: to > from ? UP : DOWN }
 }
 
-/** The reason cut to `room` columns, ending in …, never leaving a half of an emoji or a space before the …. */
-function cut(reason: string, room: number): string {
-  let head = reason.slice(0, room - 1)
-  if (/[\uD800-\uDBFF]$/.test(head)) head = head.slice(0, -1)
-  return head.trimEnd() + ELLIPSIS
-}
-
 /**
- * The full gate, fitted to `width` columns. When it is too wide, the reason is cut first (ending in …), then the
- * whole `auto: "…"` goes, then the `effort` label. The five stops and the Auto slot always stay, even if they
- * are wider than `width` on their own.
+ * The full gate, fitted to `width` columns. Auto's reason is shown whole or not at all: when the whole
+ * `auto: "<why>"` does not fit, it goes, never cut, as a cut reason says little. Then the `effort` label goes. The
+ * five stops and the Auto slot always stay, even if they are wider than `width` on their own.
  */
 export function gateRow(v: GateView, width: number): GateSeg[] {
   const arrows = arrowsOf(v)
@@ -80,13 +72,9 @@ export function gateRow(v: GateView, width: number): GateSeg[] {
 
   const reason = v.isAuto ? v.why.replace(/\s+/g, ' ').trim() : ''
   if (reason) {
-    // Columns left for the reason's own text once the label, the stops, the Auto slot and the quotes are there.
-    const room = width - gateColumns(label) - gateColumns(rest) - GAP.length - WHY_OPEN.length - WHY_CLOSE.length
-    // A cut reason needs two columns, a letter and the …; a lone … says nothing, so then the reason goes instead.
-    const shown = reason.length <= room ? reason : room >= 2 ? cut(reason, room) : null
-    if (shown !== null) {
-      return [...label, ...rest, { text: GAP, role: 'sep' }, { text: WHY_OPEN + shown + WHY_CLOSE, role: 'why' }]
-    }
+    const why: GateSeg[] = [{ text: GAP, role: 'sep' }, { text: WHY_OPEN + reason + WHY_CLOSE, role: 'why' }]
+    const whole = [...label, ...rest, ...why]
+    if (gateColumns(whole) <= width) return whole
   }
   return gateColumns(label) + gateColumns(rest) <= width ? [...label, ...rest] : rest
 }

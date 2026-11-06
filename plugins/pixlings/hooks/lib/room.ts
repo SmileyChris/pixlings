@@ -364,7 +364,7 @@ export type RoomModel = {
   readonly bubble: string | null
   readonly persona: string | null
   readonly vitals: readonly RoomVital[]
-  /** The effort gate's row under the vitals, drawn by the caller with the room's kit, cut to `width`, lit in `color`. */
+  /** The effort gate's row under the vitals, drawn by the caller with the room's kit, fitted to `width`, lit in `color`. */
   readonly gate?: ((kit: RoomKit, width: number, color: string) => readonly RenderElement[]) | null
   readonly squad: readonly PixlingsMini[]
   readonly isPlanning: boolean

@@ -42,7 +42,7 @@ effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
 - Label `effort` (Chris's call; not "gear", which Pixlings already uses for wearables).
 - Five stops, Claude Code's levels: low, medium, high, xhigh, max. The knob `●` and accent colour sit on the level in use.
 - `A` is the Auto slot at the end, lit like a key while Auto is on (on the accent colour, in dark ink), dim while off.
-- While Auto is on, its short reason follows in dim text (`auto: "<why>"`), cut to fit `e.props.bodyColumns`.
+- While Auto is on, its short reason follows in dim text (`auto: "<why>"`), shown whole when it fits `e.props.bodyColumns` and left off when it does not, never cut with `…`.
 - **Shift animation (Chris's call):** when the level changes, the dashes between the old stop and the new one turn
   into arrows pointing the way it moved (`L ─ M → H → ●X ─ Mx`), then fade back to dashes after a moment
   (Effortless uses `SWITCHED_MS` for its equivalent; reuse its value). Shown for Auto's shifts; for a manual click too
