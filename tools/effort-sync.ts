@@ -10,9 +10,13 @@
 // A declaration is cut out lexically: from its `const`/`let`/`function`/`async function` line (with or without
 // `export`) to just before the next line at column 0 that isn't a continuation (`}`, `)`, `]`, or a line starting with
 // a backtick), outside any template literal. A comment, another declaration or any other statement at column 0 ends it.
-// Whether a line opens or closes a template literal is decided by its backticks, not counting ones inside a `//`
-// comment or a '…' or "…" string. As a guard, a declaration over MAX_LINES lines on either side is taken for a failed
-// cut: it prints `extraction looks wrong for <name>` and exits 2. Doc comments above a declaration aren't compared.
+// Which lines sit inside a template literal or block comment is found by a small character scanner over the whole
+// file (code, // comment, /* */ comment, '…', "…" and template states, backslash escapes honoured). Inside a template
+// only an unescaped backtick ends it, so `//` and quotes there are text; a `${` stays in the template and nested
+// templates are not tracked. A '…' or "…" string ends at its line's end. Regex literals are not understood, so a quote
+// or backtick inside one could throw the scan off. As a guard, a declaration over MAX_LINES lines on either side is
+// taken for a failed cut: it prints `extraction looks wrong for <name>` and exits 2. Doc comments above a declaration
+// aren't compared.
 // Never writes anything.
 
 import { readFileSync } from 'node:fs'
@@ -28,38 +32,50 @@ const normalise = (line: string): string =>
     .replace(/^(\s*return EFFORTS\[.*\])!(\s*;?)$/, '$1$2')
     .replace(/\s+$/, '')
 
-// The names listed after `// synced:` in a source's header.
+// The names listed after `// synced:` in a source's header, read within that one line.
 const syncedNames = (src: string): string[] => {
-  const m = /^\/\/\s*synced:\s*(.+)$/m.exec(src)
+  const m = /^\/\/[ \t]*synced:[ \t]*([^\n]*)$/m.exec(src)
   return m ? m[1]!.split(',').map(s => s.trim()).filter(Boolean) : []
 }
 
-// Number of backticks on a line that open or close a template literal: an odd count flips whether the next line is
-// inside one. Escaped characters, '…' and "…" strings and a trailing // comment are not counted.
-const backticks = (line: string): number =>
-  (
-    line
-      .replace(/\\./g, '')
-      .replace(/'[^']*'|"[^"]*"/g, '')
-      .replace(/\/\/.*$/, '')
-      .match(/`/g) ?? []
-  ).length
+// For each line, whether it starts inside a template literal or a block comment (so nothing at its column 0 can start
+// a declaration or end one).
+const startsInside = (lines: string[]): boolean[] => {
+  type State = 'code' | 'line' | 'block' | "'" | '"' | '`'
+  let state: State = 'code'
+  return lines.map(line => {
+    const inside = state === '`' || state === 'block'
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]!
+      const two = line.slice(i, i + 2)
+      if (state === 'code') {
+        if (two === '//') state = 'line'
+        else if (two === '/*') (state = 'block'), i++
+        else if (c === "'" || c === '"' || c === '`') state = c
+      } else if (state === 'block') {
+        if (two === '*/') (state = 'code'), i++
+      } else if (c === '\\') i++
+      else if (c === state) state = 'code'
+    }
+    // A line comment and a '…' or "…" string end with their line; a template and a block comment carry on.
+    if (state === 'line' || state === "'" || state === '"') state = 'code'
+    return inside
+  })
+}
 
 // A top-level declaration of `name`, normalised and as lines, or undefined when the source has none.
 const extract = (src: string, name: string): string[] | undefined => {
   const lines = src.split('\n')
+  const inside = startsInside(lines)
   const head = new RegExp(`^(?:export\\s+)?(?:async\\s+)?(?:const|let|function)\\s+${name}\\b`)
-  const start = lines.findIndex(l => head.test(l))
+  const start = lines.findIndex((l, i) => !inside[i] && head.test(l))
   if (start < 0) return undefined
-  let inTemplate = false
   let end = lines.length
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i]!
-    if (i > start && !inTemplate && line !== '' && !/^[\s})\]`]/.test(line)) {
+  for (let i = start + 1; i < lines.length; i++) {
+    if (!inside[i] && lines[i] !== '' && !/^[\s})\]`]/.test(lines[i]!)) {
       end = i
       break
     }
-    if (backticks(line) % 2 === 1) inTemplate = !inTemplate
   }
   const body = lines.slice(start, end).map(normalise)
   while (body.length && body[body.length - 1] === '') body.pop()
