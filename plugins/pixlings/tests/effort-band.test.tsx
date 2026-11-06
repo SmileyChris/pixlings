@@ -62,6 +62,8 @@ type HostOptions = {
   now?: number
   /** The commands the app lists. */
   commands?: { name: string; description: string; source: string; plugin?: string }[]
+  /** Passes the plugin's redraws on to the kit, so a mounted drawing follows them as a surface's does. */
+  isRedrawn?: boolean
 }
 
 /** The engine beneath the pixling: a judge that answers in turn (medium once the replies run out), a prompt box, toasts, and the model step. */
@@ -97,7 +99,12 @@ const host = (on: On, replies: Reply[] = [], o: HostOptions = {}) => {
     // The plugin's own call: the event's result itself.
     return { isFilled: true } as never
   })
-  on('ui.invalidate', () => ({ value: undefined }) as never)
+  /** When, on the clock, each redraw the plugin asked for came. */
+  const invalidated: number[] = []
+  on('ui.invalidate', ($, e, next) => {
+    invalidated.push(clock.now())
+    return o.isRedrawn ? next(e) : ({ value: undefined } as never)
+  })
   on('ui.blit', () => ({ value: {} }) as never)
   on('ui.render', () => ({ type: 'Box', props: {}, children: [] }) as never)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -118,7 +125,7 @@ const host = (on: On, replies: Reply[] = [], o: HostOptions = {}) => {
       usage: { input_tokens: 20, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'test' },
     }
   })
-  return { clock, asked, toasts, filled, reached }
+  return { clock, asked, toasts, filled, reached, invalidated }
 }
 
 /** The person types a prompt, and the main loop sends one request at the app's own `effort`. */
@@ -518,6 +525,60 @@ describe('the effort gate in the band', () => {
       expect(await ui.find({ type: 'Text', text: ' ← ' }), surface).toBeUndefined()
       await ui.unmount()
     }
+  })
+
+  test('the arrows fade on their own: the gate asks for a redraw as the shift ends', { options: { band: 'full', roam: false } }, async ($, on) => {
+    // Noon where the test runs: no late-night line, whose mood ending would ask for a redraw of its own.
+    const { clock, invalidated } = host(on, ['high', 'low'], { isRedrawn: true, now: new Date(2026, 9, 3, 12, 0, 0).getTime() })
+    // The shift as Auto writes it to the state, which the kit beneath still keeps.
+    const shifts: { until: number }[] = []
+    on('state.set', ($, e, next) => {
+      if (e.key === 'effortShift' && e.value) shifts.push(e.value as { until: number })
+      return next(e)
+    })
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    await ask($, 'what is a monad')
+    expect(shifts).toHaveLength(1)
+    const until = shifts[0]!.until
+    // The terminal blits its frames and redraws only when asked, so the gate's own timer is all that can fade them.
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
+    const mountedAt = clock.now()
+    await clock.set(until - 1000)
+    // Nothing yet: no redraw asked for, and the arrows still show.
+    expect(invalidated.filter(at => at > mountedAt)).toEqual([])
+    expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
+    await clock.set(until + 1000)
+    // The gate's timer asked for a redraw as the shift ended, and the drawing followed it: no remount, and dashes
+    // again. (The pixling's clock is synced to this one once a second, so just after the clock jumps it lags: a redraw
+    // that lands before it reaches the end draws the arrows once more and asks again, till it does.)
+    const fade = invalidated.filter(at => at > mountedAt)
+    expect(fade.length).toBeGreaterThan(0)
+    expect(Math.abs(fade[0]! - until)).toBeLessThan(1000)
+    expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  auto: "judged low"')
+    // And then it is done: no more redraws for it.
+    const settled = invalidated.length
+    await clock.advance(3000)
+    expect(invalidated).toHaveLength(settled)
+    await ui.unmount()
+  })
+
+  test('on desktop the arrows fade with no remount too', { options: { band: 'full', roam: false } }, async ($, on) => {
+    // The desktop band's frame clock redraws it a few times a second anyway; this is what the person sees there.
+    const { clock } = host(on, ['high', 'low'], { isRedrawn: true, now: new Date(2026, 9, 3, 12, 0, 0).getTime() })
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    await ask($, 'what is a monad')
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
+    await clock.advance(3500)
+    expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  auto: "judged low"')
+    await ui.unmount()
   })
 
   test('autoEffort off: no gate, and the vitals keep the effort', { options: { band: 'full', roam: false, autoEffort: false } }, async ($, on) => {
