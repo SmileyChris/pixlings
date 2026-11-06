@@ -166,6 +166,20 @@ describe('gear drops', () => {
     expect(new Set(eggs.map(e => dropsOf(e, 99).map(u => u.face ?? u.neck).join())).size).toBeGreaterThan(300)
   })
 
+  test('drops lean toward the slot it has more of', () => {
+    // Of the eggs whose first piece is a face, more get another face second than with no lean.
+    const sameSecond = (odds: typeof DROP_ODDS): number =>
+      eggs.filter(e => {
+        const [a, b] = dropsOf(e, 99, odds)
+        return a && b && !!a.face === !!b.face
+      }).length / eggs.length
+    const even = sameSecond({ ...DROP_ODDS, toward: 1 })
+    const leaning = sameSecond(DROP_ODDS)
+    expect(even).toBeGreaterThan(0.35)
+    expect(even).toBeLessThan(0.55)
+    expect(leaning).toBeGreaterThan(even + 0.15)
+  })
+
   test('a level-up names what dropped, and it is worn', () => {
     const p = hatchPixling(() => 0.4, 1_700_000_000_000)
     const first = dropsOf(p, 99)[0]!

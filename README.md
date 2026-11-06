@@ -43,7 +43,7 @@ It reacts to the session: tests, commits, pushes, pull requests, risky commands,
 
 Turning a failing test suite green counts as squashing a bug. While Claude works, the spinner talks like your pixling (*Quacking…*, *Haunting…*, *Compiling feelings…*), and when Claude is idle it wanders along the free space of the band. Hover over the band for its card: personality, streak, badges and what it has heard.
 
-It levels up as you work, and finds things to wear. Hats come at set levels; from level 10, on every level between, there's a 10% chance it finds a piece of face gear or neckwear it hasn't got yet, and the chance doubles after every four of those levels without one:
+It levels up as you work, and finds things to wear. Hats come at set levels; from level 10, on every level between, there's a 10% chance it finds a piece of face gear or neckwear it hasn't got yet, and the chance doubles after every four of those levels without one. Each piece is three times as likely from the slot it already has more of:
 
 <p align="center"><img src="docs/media/gear.gif" width="100%" alt="Hats by level: a sprout at 2, a mushroom cap at 4, a beanie at 6, a party hat at 9, a crown at 12, a chef's hat at 15, a halo at 18, a wizard hat at 25, a cowboy hat at 30, a viking helmet at 35, a top hat at 42, a graduation cap at 50. Found between them: sunglasses, a monocle, a visor, 3D glasses, an eyepatch, a chain, a bow tie, a medal, a scarf and a bandana"></p>
 

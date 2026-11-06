@@ -212,10 +212,12 @@ export const GEAR_LABELS: Readonly<Record<Face | Neck, string>> = {
 
 /**
  * How face gear and neckwear drop: from level `from`, each level without a hat has `chance` of a
- * piece, doubled for every `doubleAfter` such levels in a row without one (0 never doubles).
+ * piece, doubled for every `doubleAfter` such levels in a row without one (0 never doubles). Each
+ * piece of the slot it has more of is `toward` times as likely, so a set fills before the other
+ * starts (1 picks evenly).
  */
-export type DropOdds = { readonly chance: number; readonly doubleAfter: number; readonly from: number }
-export const DROP_ODDS: DropOdds = { chance: 0.1, doubleAfter: 4, from: 10 }
+export type DropOdds = { readonly chance: number; readonly doubleAfter: number; readonly from: number; readonly toward: number }
+export const DROP_ODDS: DropOdds = { chance: 0.1, doubleAfter: 4, from: 10, toward: 3 }
 
 /** The chance at a level after `dry` levels in a row without a drop. */
 export const chanceAfter = (odds: DropOdds, dry: number): number =>
@@ -223,6 +225,18 @@ export const chanceAfter = (odds: DropOdds, dry: number): number =>
 
 const HAT_LEVELS = new Set(UNLOCKS.map(u => u.level))
 const DROPPABLE: readonly (Face | Neck)[] = [...FACE_IDS, ...NECK_IDS]
+const isFacePiece = (id: string): boolean => (FACE_IDS as readonly string[]).includes(id)
+
+/** One of `left` for the roll `r` in [0, 1): each piece of the slot `owned` has more of `toward` times as likely. */
+const pickPiece = (left: readonly (Face | Neck)[], owned: ReadonlySet<string>, toward: number, r: number): Face | Neck => {
+  const faces = [...owned].filter(isFacePiece).length
+  const necks = owned.size - faces
+  const isMore = (id: string): boolean => (faces > necks ? isFacePiece(id) : necks > faces ? !isFacePiece(id) : false)
+  const weights = left.map(id => (isMore(id) ? toward : 1))
+  let at = r * weights.reduce((a, b) => a + b, 0)
+  for (let i = 0; i < left.length; i++) if ((at -= weights[i]!) < 0) return left[i]!
+  return left[left.length - 1]!
+}
 
 /** A roll in [0, 1) fixed by the egg and the level: every session and every replay agree. */
 const rollAt = (hatchedAt: number, level: number, salt: number): number => {
@@ -236,7 +250,7 @@ const rollAt = (hatchedAt: number, level: number, salt: number): number => {
 /**
  * What dropped at each level up to `level`, in order: from `odds.from`, a level with no hat rolls
  * `odds.chance` for a piece the pixling hasn't got, doubling after every `odds.doubleAfter` empty levels in a row, picked at
- * random from the rest. The rolls come from the egg, so they need no saving.
+ * random from the rest, leaning toward the slot it has more of. The rolls come from the egg, so they need no saving.
  */
 export const dropsOf = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number, odds: DropOdds = DROP_ODDS): Unlock[] => {
   const owned = new Set<string>(p.kept)
@@ -251,9 +265,9 @@ export const dropsOf = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number, o
       continue
     }
     dry = 0
-    const id = left[Math.floor(rollAt(p.hatchedAt, at, 2) * left.length)] ?? left[0]!
+    const id = pickPiece(left, owned, odds.toward, rollAt(p.hatchedAt, at, 2))
     owned.add(id)
-    out.push((FACE_IDS as readonly string[]).includes(id) ? { level: at, face: id as Face, label: GEAR_LABELS[id] } : { level: at, neck: id as Neck, label: GEAR_LABELS[id] })
+    out.push(isFacePiece(id) ? { level: at, face: id as Face, label: GEAR_LABELS[id] } : { level: at, neck: id as Neck, label: GEAR_LABELS[id] })
   }
   return out
 }

@@ -2001,7 +2001,7 @@ export const register: Register = (on, options) => {
     '/pixling badges — the badges, earned and still to earn',
     '/pixling pet — pet it',
     '/pixling name <name> — rename it',
-    '/pixling wear [item|none] — the wardrobe, or change its look',
+    '/pixling wear [item|random|none] — the wardrobe; an item puts it on, or takes it off if worn; random picks a look',
     '/pixling dex — the species you have hatched',
     '/pixling hatch — release it and hatch a new egg (level and stats reset; badges, streak and dex stay)',
     '/pixling adopt [species] — bring back your old /buddy: its name, personality and days together (read locally)',
@@ -2142,7 +2142,6 @@ export const register: Register = (on, options) => {
         const p = pixling
         const have = unlockedAt(p, level)
         const idOf = (u: Unlock): string => u.hat ?? u.face ?? u.neck ?? ''
-        const owned = (id: string): boolean => have.some(u => idOf(u) === id)
         const ownedIds = have.map(idOf)
         if (item === '') {
           // No item named: show the wardrobe, change nothing. Only what it has: the rest is a surprise.
@@ -2159,7 +2158,7 @@ export const register: Register = (on, options) => {
           if (have.length === 0) return { text: [`${p.name} has nothing to wear yet (level ${level}).`, ...still].join('\n') }
           return {
             text: [
-              `${p.name}'s wardrobe (level ${level}). /pixling wear <item> or none:`,
+              `${p.name}'s wardrobe (level ${level}). /pixling wear <item> puts it on or takes it off, random picks a look, none takes everything off:`,
               ...group('Hats', have.filter(u => u.hat)),
               ...group('Face', have.filter(u => u.face)),
               ...group('Neck', have.filter(u => u.neck)),
@@ -2167,21 +2166,48 @@ export const register: Register = (on, options) => {
             ].join('\n'),
           }
         }
+        let reply: string
         if (item === 'none') {
           pixling = { ...pixling, hat: 'none', face: 'none', neck: 'none' }
+          reply = `${p.name} takes everything off.`
+        } else if (item === 'random' && !ownedIds.includes('random')) {
+          // Each slot it has pieces for: one of them, or bare as one more choice. Never all bare, and a
+          // different look from now when there is one.
+          const of = (key: 'hat' | 'face' | 'neck'): string[] => have.flatMap(u => (u[key] ? [u[key]!] : []))
+          const pick = <T,>(xs: readonly T[]): T | null => (xs.length ? ([...xs, null][Math.floor(Math.random() * (xs.length + 1))] ?? null) : null)
+          const was = gearOf(p)
+          let look = was
+          for (let i = 0; i < 8; i++) {
+            look = { hat: pick(of('hat')) as typeof was.hat, face: pick(of('face')) as typeof was.face, neck: pick(of('neck')) as typeof was.neck }
+            const isBare = !look.hat && !look.face && !look.neck
+            if (!isBare && (look.hat !== was.hat || look.face !== was.face || look.neck !== was.neck)) break
+          }
+          if (have.length === 0) return { text: `${p.name} has nothing to wear yet.` }
+          if (!look.hat && !look.face && !look.neck) {
+            // Eight bare draws in a row: wear one piece it has, at random.
+            const u = have[Math.floor(Math.random() * have.length)]!
+            look = { hat: u.hat ?? null, face: u.face ?? null, neck: u.neck ?? null }
+          }
+          pixling = { ...pixling, hat: look.hat ?? 'none', face: look.face ?? 'none', neck: look.neck ?? 'none' }
+          const labels = [look.hat, look.face, look.neck].flatMap(id => have.filter(u => id && idOf(u) === id).map(u => u.label))
+          reply = `${p.name} is wearing ${labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0]} now.`
         } else {
-          if (!owned(item)) {
+          const piece = have.find(u => idOf(u) === item)
+          if (!piece) {
             const choices = ownedIds.length ? `${ownedIds.join(', ')} or none` : 'nothing yet'
             return { text: `${p.name} doesn't have "${arg}". It can wear: ${choices}.` }
           }
-          if (isHat(item)) pixling = { ...pixling, hat: item }
-          else if (isFace(item)) pixling = { ...pixling, face: item }
-          else if (isNeck(item)) pixling = { ...pixling, neck: item }
+          // Wearing what it already wears takes it off.
+          const slot = isHat(item) ? 'hat' : isFace(item) ? 'face' : isNeck(item) ? 'neck' : null
+          if (!slot) return { text: `${p.name} can't wear "${arg}".` }
+          const isOn = gearOf(p)[slot] === item
+          pixling = { ...pixling, [slot]: isOn ? 'none' : item }
+          reply = isOn ? `${p.name} takes off ${piece.label}.` : `${p.name} is wearing ${piece.label} now.`
         }
         persist()
         await publishView()
         $.ui.invalidate('ui.render')
-        return { text: `${pixling.name} is wearing ${item || 'nothing'} now.` }
+        return { text: reply }
       }
       case 'dex':
         return { text: `${DEX_START}${pixling.dex.length}/${SPECIES.length} species hatched.` }
