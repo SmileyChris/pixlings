@@ -28,6 +28,28 @@ export type Stats = {
   quipTokens: number
 }
 
+/**
+ * What the person has done across every egg, for the badges: the stats a hatch resets, kept on,
+ * and the shiny eggs laid.
+ */
+export type Lifetime = {
+  turns: number
+  commits: number
+  bugsSquashed: number
+  testsPassed: number
+  risky: number
+  nights: number
+  coldStarts: number
+  sessions: number
+  shinyEggs: number
+}
+
+/** The stats that also count into `lifetime`. */
+export const LIFETIME_STATS = ['turns', 'commits', 'bugsSquashed', 'testsPassed', 'risky', 'nights', 'coldStarts', 'sessions'] as const
+
+const isLifetimeStat = (stat: keyof Stats): stat is (typeof LIFETIME_STATS)[number] =>
+  (LIFETIME_STATS as readonly string[]).includes(stat)
+
 /** Consecutive days with at least one turn, by local date. */
 export type Streak = { last: string | null; days: number; best: number }
 
@@ -51,6 +73,8 @@ export type Pixling = {
   /** Gear it keeps from before face gear dropped at random: sunglasses, for one past level 6. */
   kept: GearId[]
   stats: Stats
+  /** Counts that outlive a hatch, for the badges. */
+  lifetime: Lifetime
   /** Every species this person has hatched, for the dex. */
   dex: string[]
   /** Badge id → when it was earned. */
@@ -89,6 +113,18 @@ export const emptyStats = (): Stats => ({
   coldStarts: 0,
   quips: 0,
   quipTokens: 0,
+})
+
+export const emptyLifetime = (): Lifetime => ({
+  turns: 0,
+  commits: 0,
+  bugsSquashed: 0,
+  testsPassed: 0,
+  risky: 0,
+  nights: 0,
+  coldStarts: 0,
+  sessions: 0,
+  shinyEggs: 0,
 })
 
 export const emptyDay = (date: string): Day => ({ date, turns: 0, commits: 0, squashed: 0, tests: 0, xp: 0 })
@@ -137,6 +173,7 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
     neck: null,
     kept: [],
     stats: emptyStats(),
+    lifetime: emptyLifetime(),
     pettedAt: null,
     eggSeed: null,
     dex: [...new Set([...dex, species.id])],
@@ -183,6 +220,7 @@ export const rehatch = (p: Pixling, random: () => number, now: number): Pixling 
   badges: p.badges,
   streak: p.streak,
   tics: p.tics,
+  lifetime: p.lifetime,
 })
 
 // Experience ------------------------------------------------------------------------------------
@@ -355,6 +393,7 @@ export const gain = (
   const after = levelOf(pixling.xp).level
   // Laid by now and not before: this gain crossed the step it came at.
   const isShinyEgg = shinyEggOf(p) === null && shinyEggOf(pixling) !== null
+  if (isShinyEgg) pixling.lifetime = { ...pixling.lifetime, shinyEggs: pixling.lifetime.shinyEggs + 1 }
   if (after <= before) return { pixling, levelUp: null, isShinyEgg }
   return {
     pixling,
@@ -377,6 +416,7 @@ export const shinyEggOf = (p: Pick<Pixling, 'hatchedAt' | 'xp'>, chance = SHINY_
 export const bump = (p: Pixling, stat: keyof Stats, by = 1): Pixling => ({
   ...p,
   stats: { ...p.stats, [stat]: p.stats[stat] + by },
+  lifetime: isLifetimeStat(stat) ? { ...p.lifetime, [stat]: p.lifetime[stat] + by } : p.lifetime,
 })
 
 /** Reads a stored value back into a pixling, or null when it is not one. */
@@ -404,6 +444,7 @@ export const revive = (value: unknown): Pixling | null => {
         ? ['shades']
         : [],
     stats: { ...emptyStats(), ...(v.stats ?? {}) },
+    lifetime: isRecord(v.lifetime) ? { ...emptyLifetime(), ...numbersOf(v.lifetime) } : seedLifetime(v, hatchedAt),
     pettedAt: typeof v.pettedAt === 'number' ? v.pettedAt : null,
     eggSeed: typeof v.eggSeed === 'number' ? v.eggSeed : null,
     dex: Array.isArray(v.dex) ? v.dex.filter((d): d is string => typeof d === 'string') : [v.species],
@@ -428,6 +469,20 @@ export const revive = (value: unknown): Pixling | null => {
         }
       : null,
   }
+}
+
+/**
+ * Lifetime counts for a save from before them: what this pixling has done, and the shiny eggs we can
+ * still see, the one it laid and the one it hatched from. Lucky earned means one at least.
+ */
+const seedLifetime = (v: Partial<Pixling>, hatchedAt: number): Lifetime => {
+  const stats = { ...emptyStats(), ...(v.stats ?? {}) }
+  const laid = shinyEggOf({ hatchedAt, xp: typeof v.xp === 'number' ? v.xp : 0 }) !== null ? 1 : 0
+  const isLucky = isRecord(v.badges) && typeof v.badges.lucky === 'number'
+  const lifetime = emptyLifetime()
+  for (const k of LIFETIME_STATS) lifetime[k] = numberOr(stats[k], 0)
+  lifetime.shinyEggs = Math.max(isLucky ? 1 : 0, (v.isShiny === true ? 1 : 0) + laid)
+  return lifetime
 }
 
 /** A stored value that is there but is no pixling this version can read: never to be written over. */
@@ -486,6 +541,7 @@ export const mergeSave = (stored: Pixling, base: Pixling | null, ours: Pixling):
     badges,
     streak: laterStreak(stored.streak, ours.streak),
     tics: moved(stored.tics, since?.tics ?? {}, ours.tics),
+    lifetime: moved(stored.lifetime, since?.lifetime ?? {}, ours.lifetime) as Lifetime,
   }
   if (!isSameEgg || !since) return { ...(stored.hatchedAt > ours.hatchedAt ? stored : ours), ...person }
   const pick = <T>(theirs: T, was: T, now: T): T => (now === was ? theirs : now)
