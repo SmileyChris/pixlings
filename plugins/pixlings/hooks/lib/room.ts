@@ -364,6 +364,8 @@ export type RoomModel = {
   readonly bubble: string | null
   readonly persona: string | null
   readonly vitals: readonly RoomVital[]
+  /** The effort gate's row under the vitals, drawn by the caller with the room's kit, cut to `width`, lit in `color`. */
+  readonly gate?: ((kit: RoomKit, width: number, color: string) => readonly RenderElement[]) | null
   readonly squad: readonly PixlingsMini[]
   readonly isPlanning: boolean
   readonly effect: PixlingsEffect
@@ -562,6 +564,7 @@ const home = (kit: RoomKit, seat: Seat, m: RoomModel, p: Pixling, act: RoomActio
             ),
           })
         : null,
+      m.gate ? Box({ key: 'effort-gate', flexDirection: 'row', flexWrap: 'wrap', children: [...m.gate(kit, cardWidth, color)] }) : null,
       // Petted in the last 20 minutes: no Button until it can be again.
       petWait(p, m.at) === 0 ? Box({ marginTop: 1, children: [Button({ key: 'pet', label: '♥ Pet', hotkey: 'p', onPress: () => act.pet() })] }) : null,
     ],

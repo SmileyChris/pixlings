@@ -518,7 +518,8 @@ describe('model switches', () => {
     expect((await $.classic.PreModelSwitch(SWITCH)).permissionDecision).toBeUndefined()
   })
 
-  test('a switch names the cache lifetime: known, saved with its source, the countdown sure', async ($, on) => {
+  // With Auto effort on the effort gate names the level and the vitals leave it off (effort-band.test.tsx): off, they name it.
+  test('a switch names the cache lifetime: known, saved with its source, the countdown sure', { options: { autoEffort: false } }, async ($, on) => {
     const { clock, db } = host(on)
     const step = model(on)
     await $.session.start(START)
@@ -605,7 +606,8 @@ describe('the stored TTL', () => {
 })
 
 describe('the vitals', () => {
-  test('they name the model and effort, and what the last turn took from the limits', async ($, on) => {
+  // With Auto effort on the effort gate names the level and the vitals leave it off (effort-band.test.tsx): off, they name it.
+  test('they name the model and effort, and what the last turn took from the limits', { options: { autoEffort: false } }, async ($, on) => {
     const { clock, limits } = host(on)
     const step = model(on)
     limits.windows = [{ kind: 'five_hour', percentUsed: 40 }]

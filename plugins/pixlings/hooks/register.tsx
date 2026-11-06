@@ -5,11 +5,14 @@ import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto,
 import type { PixlingsPersona } from '../types'
 import { createAuto, readAutoConfig } from './effort/auto.ts'
 import type { Auto } from './effort/auto.ts'
+import { gateEffort, gateRow, miniGate } from './effort/gate.ts'
+import { gateElements } from './effort/gate-view.ts'
+import type { GateActions } from './effort/gate-view.ts'
 import { askHaiku } from './effort/haiku.ts'
 import { cacheSafe, contextFrom } from './effort/judge.ts'
 import type { Effort } from './effort/judge.ts'
 import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
-import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
+import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, MINI_GATE_COLUMNS, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
@@ -297,6 +300,44 @@ async function typeEffort($: EngineInterface, level: Effort, typing: Typing): Pr
   } catch {
     // Never into a turn.
   }
+}
+
+type GateView = Parameters<typeof gateRow>[0]
+type GateState = { pick: PixlingsEffortPick; isAuto: PixlingsEffortAuto; shift: PixlingsEffortShift }
+type GateFade = { current: { until: number; timer: Timer } | null }
+
+/**
+ * The effort gate's state, read from `$.state` so a pick, Auto's switch or a shift redraws whoever drew it. A shift
+ * still drawing as arrows gets one redraw at its end, so they fade; a newer shift replaces it rather than stacking.
+ */
+async function readGate($: EngineInterface, fade: GateFade, at: number): Promise<GateState> {
+  const pick = await read($, effortPickAtom)
+  const isAuto = await read($, effortAutoAtom)
+  const shift = await read($, effortShiftAtom)
+  if (shift && shift.until > at && fade.current?.until !== shift.until) {
+    fade.current?.timer.cancel()
+    const until = shift.until
+    fade.current = {
+      until,
+      timer: $.clock.after(until - at, () => {
+        if (fade.current?.until === until) fade.current = null
+        void Promise.resolve($.ui.invalidate('ui.render')).catch(() => undefined)
+      }),
+    }
+  }
+  return { pick, isAuto, shift }
+}
+
+/** A press on a stop picks its level, on the Auto slot flips Auto, then the gate redraws. Before Auto loads, nothing. */
+function gateActions($: EngineInterface, current: () => Auto | null): GateActions {
+  const then = (run: (a: Auto) => Promise<void>): void => {
+    const a = current()
+    if (!a) return
+    void run(a)
+      .then(() => $.ui.invalidate('ui.render'))
+      .catch(() => undefined)
+  }
+  return { pick: level => then(a => a.pickLevel(level)), toggle: () => then(a => a.toggleAuto()) }
 }
 
 /** The skill or custom command a typed "/name args" runs, or nothing for the app's own commands and Pixlings'. Copied from Effortless's `typedSkill`. */
@@ -886,7 +927,8 @@ export const register: Register = (on, options) => {
   const refreshVitals = async (at: number): Promise<void> => {
     const port = io
     if (!port || !wantsVitals) return
-    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, turnDelta, isCalm })
+    // With Auto effort on, the gate shows the level wherever the vitals show (the band, the room).
+    const pieces = vitals({ cache, now: at, isWorking, contextPercent, limits, model, effort, hideEffort: autoConfig.isOn, turnDelta, isCalm })
     const key = pieces.map(v => `${v.text}:${v.tone}`).join('|')
     if (key !== lastVitals) {
       lastVitals = key
@@ -2659,6 +2701,15 @@ export const register: Register = (on, options) => {
     })
   }
 
+  // The effort gate ------------------------------------------------------------------------
+
+  /** The one redraw that fades a shift's arrows: replaced, never stacked, when a newer shift comes. */
+  const gateFade: GateFade = { current: null }
+
+  /** What the effort gate shows, from its state in `$.state`; the level is the one the next request carries. */
+  const gateOf = (state: GateState | null, at: number): GateView | null =>
+    state && { effort: gateEffort({ pick: state.pick, isAuto: state.isAuto, appEffort: effort }), isAuto: state.isAuto, why: state.pick?.why ?? '', shift: state.shift, now: at }
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const v = await read($, view)
     const p = pixling
@@ -2677,6 +2728,9 @@ export const register: Register = (on, options) => {
     await read($, hatchAtom)
     const rawPersona = await read($, roomPersona)
     const persona = personaLine(rawPersona)
+    const gateAt = now()
+    const gate = gateOf(autoConfig.isOn ? await readGate($, gateFade, gateAt) : null, gateAt)
+    const acts = gateActions($, () => auto)
     // Read to redraw when the room opens or closes; the engine's list of panes is the truth, as a
     // close by the pane's own mark may never reach this plugin's hooks.
     await read($, roomOpenAtom)
@@ -2687,6 +2741,13 @@ export const register: Register = (on, options) => {
     bandColumns = e.props.bodyColumns
     const s = speciesById(v.speciesId) ?? SPECIES[0]!
     const color = hex(RARITY_COLOR[s.rarity])
+    /** The mini gate, two columns after what it follows: `MINI_GATE_COLUMNS` in all. */
+    const mini = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button']) =>
+      gate ? (
+        <Box marginLeft={2} flexShrink={0} flexDirection="row">
+          {gateElements({ Text, Button }, miniGate(gate), color, acts)}
+        </Box>
+      ) : null
     const at = now()
     const text = sayingNow(napping, said, at)
     // Under the pointer the band shows its card: who it is, the streak, the badges, the days
@@ -2724,14 +2785,14 @@ export const register: Register = (on, options) => {
       const mood = (await read($, moodAtom)) as Mood
       const face = `${FACES[mood] ?? FACES.idle} `
       const lead = isPicture ? form.columns + 1 : face.length
-      const before = lead + v.name.length + ` · Lv ${v.level}`.length + (pieces[0] ? pieces[0].text.length + 2 : 0)
+      const before = lead + v.name.length + ` · Lv ${v.level}`.length + (pieces[0] ? pieces[0].text.length + 2 : 0) + (gate ? MINI_GATE_COLUMNS : 0)
       // Speech that runs past the line wraps under its start, so the band grows while it talks,
       // as far as the rows it may take; past those the last line is cut.
       const speech = text ? lineSpeech(text, Math.max(8, e.props.bodyColumns - 1 - before - 2), maxRows) : []
       // The card's line goes in the room the line leaves, sized to it, so revealing it moves
       // nothing: a row that overflowed would squeeze the name.
       const spare = e.props.bodyColumns - 1 - before - (speech.length ? Math.max(...speech.map(line => line.length)) + 2 : 0)
-      const { Box, Text, Image } = $.ui.resolve(e) as Elements['terminal']
+      const { Box, Text, Button, Image } = $.ui.resolve(e) as Elements['terminal']
       return (
         <Box key="band" flexDirection="row">
           {isPicture ? (
@@ -2744,6 +2805,7 @@ export const register: Register = (on, options) => {
           <Text bold>{v.name}</Text>
           <Text dimColor>{` · Lv ${v.level}`}</Text>
           {pieces[0] ? <Text color={TONE_COLOR[pieces[0].tone]} dimColor={pieces[0].tone === 'dim'}>{`  ${pieces[0].text}`}</Text> : null}
+          {mini(Box, Text, Button)}
           {speech.length === 1 ? <Text wrap="truncate-end">{`  ${speech[0]}`}</Text> : null}
           {speech.length > 1 ? (
             <Box flexDirection="column" flexShrink={1}>
@@ -2766,11 +2828,13 @@ export const register: Register = (on, options) => {
     const stars = `${RARITY_STARS[s.rarity]}${v.isShiny ? ' ✦' : ''}`
     const spriteColumns = form.kind === 'image' ? form.columns : frame.w
     const width = Math.max(16, Math.min(56, e.props.bodyColumns - spriteColumns - 4))
-    const column = { width, said: text, vitals: pieces.map(piece => piece.text) }
+    // The gate on a row of its own where the band has four rows or more; shorter, a few letters at the end of a row.
+    const column = { width, said: text, vitals: pieces.map(piece => piece.text), gate: gate ? (form.rows >= 4 ? 'row' : 'mini') : null } as const
     // Half blocks grow to show the column whole while it talks; a picture talks from its bottom
     // row up, growing only past its own rows. Quiet, none grows.
     const rows = bandRows(form, column, maxRows)
-    const blocks = layoutInfo({ ...column, rows })
+    // A picture with a gate row grew for the gate as for its speech (`bandRows`): it still talks from its bottom row up.
+    const blocks = layoutInfo({ ...column, rows, ...(form.kind === 'image' && column.gate === 'row' ? { isTall: false } : {}) })
     // The card opens past the info rows, over the band's empty right, so its shelf has room.
     // A band too short for the card shows its line instead, as wide as the band, as the engine
     // clips the reveal to the band's rows.
@@ -2780,7 +2844,7 @@ export const register: Register = (on, options) => {
       : Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - spriteColumns - 4))
 
     /** One part of a row in the column (see `layoutInfo`). */
-    const part = (Text: Kit['Text'], Button: Kit['Button'], piece: Part) => {
+    const part = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], piece: Part) => {
       if (piece.kind === 'name') {
         return [
           <Text bold color={color}>{v.name}</Text>,
@@ -2807,6 +2871,10 @@ export const register: Register = (on, options) => {
           </Text>
         ))
       }
+      if (piece.kind === 'gate' || piece.kind === 'miniGate') {
+        if (!gate) return []
+        return piece.kind === 'gate' ? gateElements({ Text, Button }, gateRow(gate, width), color, acts) : [mini(Box, Text, Button)]
+      }
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
 
@@ -2821,7 +2889,7 @@ export const register: Register = (on, options) => {
               ))}
             </Box>
           ) : (
-            <Box flexDirection="row">{block.parts.flatMap(piece => part(Text, Button, piece))}</Box>
+            <Box flexDirection="row">{block.parts.flatMap(piece => part(Box, Text, Button, piece))}</Box>
           ),
         )}
         {/* Opaque, with its own ink, so the rows it covers never show through, on a dark terminal or a light one. */}
@@ -3091,6 +3159,8 @@ export const register: Register = (on, options) => {
     const nestFor = await read($, nestAtom)
     const isNestOpen = pixling !== null && nestFor === pixling.hatchedAt
     const at = now()
+    const gate = gateOf(autoConfig.isOn ? await readGate($, gateFade, at) : null, at)
+    const acts = gateActions($, () => auto)
     const tab = tabOf(room.tab)
     const frame = roomFrame(at)
     const isEgg = !pixling || isHatching(at)
@@ -3132,6 +3202,7 @@ export const register: Register = (on, options) => {
       bubble: sayingNow(napping, said, at),
       persona,
       vitals: pieces.map(piece => ({ text: piece.text, color: TONE_COLOR[piece.tone], isDim: piece.tone === 'dim' })),
+      gate: gate ? (kit, width, color) => gateElements(kit, gateRow(gate, width), color, acts) : null,
       squad,
       isPlanning,
       effect,

@@ -307,6 +307,8 @@ export type VitalsInput = {
   readonly model?: string
   /** turn.step `effort`: a level, or a thinking budget in tokens. */
   readonly effort?: string | number
+  /** The effort gate shows the level, so the row leaves it off and keeps the model. */
+  readonly hideEffort?: boolean
   /** What the last turn took from the rate limits (turnQuota); the largest rise is shown. */
   readonly turnDelta?: readonly QuotaDelta[]
   /** The cache counts down in minutes, not seconds. */
@@ -348,7 +350,7 @@ export const vitals = (v: VitalsInput): Vital[] => {
     out.push({ text: `turn +${pts}%`, tone: rise >= 10 ? 'bad' : rise >= 5 ? 'warn' : 'dim' })
   }
 
-  const effort = typeof v.effort === 'number' ? tokens(v.effort) : v.effort
+  const effort = v.hideEffort ? undefined : typeof v.effort === 'number' ? tokens(v.effort) : v.effort
   const who = [v.model ? modelLabel(v.model) : '', effort ?? ''].filter(s => s !== '').join(' · ')
   if (who !== '') out.push({ text: who, tone: 'dim' })
   return out

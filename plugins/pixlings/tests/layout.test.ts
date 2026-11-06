@@ -17,7 +17,19 @@ const shape = (blocks: readonly InfoBlock[]): string[] =>
       ? ['╭', ...b.lines.map(line => `│${line}`), '╰']
       : [
           b.parts
-            .map(p => (p.kind === 'name' ? (p.isShort ? 'name' : 'name+species') : p.kind === 'xp' ? `xp:${p.bar}` : p.kind === 'quote' ? `"${p.text}"` : 'vitals'))
+            .map(p =>
+              p.kind === 'name'
+                ? p.isShort
+                  ? 'name'
+                  : 'name+species'
+                : p.kind === 'xp'
+                  ? `xp:${p.bar}`
+                  : p.kind === 'quote'
+                    ? `"${p.text}"`
+                    : p.kind === 'gate' || p.kind === 'miniGate'
+                      ? p.kind
+                      : 'vitals',
+            )
             .join(' '),
         ],
   )
@@ -224,5 +236,91 @@ describe('the column beside the sprite', () => {
   test('beside the half blocks the vitals take the rows they wrap to; short of rows, one', () => {
     expect(shape(layoutInfo({ rows: 9, width: 25, said: null, vitals: VITALS }))).toEqual(['name+species', 'xp:block', 'vitals', 'vitals'])
     expect(shape(layoutInfo({ rows: 3, width: 25, said: null, vitals: VITALS }))).toEqual(['name+species', 'xp:half', 'vitals'])
+  })
+})
+
+describe('the effort gate in the column', () => {
+  const SHORT = 'Tests green. Nice one.'
+  const LONG = 'The push went through and the branch is up on the remote. Go on, take the win, you earned it.'
+
+  test('a gate row goes after the vitals, and the column whole counts it', () => {
+    expect(shape(layoutInfo({ rows: 9, width: 40, said: null, vitals: VITALS, gate: 'row' }))).toEqual(['name+species', 'xp:block', 'vitals', 'gate'])
+    expect(shape(layoutInfo({ rows: 9, width: 40, said: SHORT, vitals: VITALS, gate: 'row' }))).toEqual([
+      '╭', `│${SHORT}`, '╰', 'name+species', 'xp:block', 'vitals', 'gate',
+    ])
+    expect(columnRows({ width: 40, said: null, vitals: VITALS, gate: 'row' })).toBe(4)
+    expect(columnRows({ width: 40, said: SHORT, vitals: VITALS, gate: 'row' })).toBe(7)
+    // Without vitals it goes under the name and XP.
+    expect(shape(layoutInfo({ rows: 4, width: 40, said: null, vitals: [], gate: 'row' }))).toEqual(['name+species', 'xp:half', 'gate'])
+  })
+
+  test('no gate, or a null one, is the column as it was', () => {
+    for (const rows of [1, 2, 3, 4, 9]) {
+      for (const said of [null, SHORT, LONG]) {
+        const before = layoutInfo({ rows, width: 40, said, vitals: VITALS })
+        expect(layoutInfo({ rows, width: 40, said, vitals: VITALS, gate: null })).toEqual(before)
+      }
+    }
+  })
+
+  test('short of rows the gate outlasts the name and XP sharing a row, but not the first vitals row', () => {
+    expect(shape(layoutInfo({ rows: 4, width: 40, said: null, vitals: VITALS, gate: 'row' }))).toEqual(['name+species', 'xp:half', 'vitals', 'gate'])
+    expect(shape(layoutInfo({ rows: 3, width: 40, said: null, vitals: VITALS, gate: 'row' }))).toEqual(['name xp:line', 'vitals', 'gate'])
+    expect(shape(layoutInfo({ rows: 2, width: 40, said: null, vitals: VITALS, gate: 'row' }))).toEqual(['name xp:line', 'vitals'])
+    // Vitals that wrap keep their first row beside the gate.
+    expect(shape(layoutInfo({ rows: 4, width: 25, said: null, vitals: VITALS, gate: 'row' }))).toEqual(['name+species', 'xp:half', 'vitals', 'gate'])
+  })
+
+  test('in four rows the speech line goes under the gate, and longer speech is cut before the gate goes', () => {
+    expect(shape(layoutInfo({ rows: 4, width: 40, said: SHORT, vitals: VITALS, gate: 'row' }))).toEqual(['name xp:line', 'vitals', 'gate', `"${SHORT}"`])
+    const long = shape(layoutInfo({ rows: 4, width: 40, said: LONG, vitals: VITALS, gate: 'row' }))
+    expect(long.slice(0, 3)).toEqual(['name xp:line', 'vitals', 'gate'])
+    expect(long[3]).toMatch(/…"$/)
+    // Beside the half blocks the bubble is cut before the gate goes.
+    const tall = shape(layoutInfo({ rows: 9, width: 30, said: `${LONG} ${LONG} ${LONG}`, vitals: VITALS, gate: 'row' }))
+    expect(tall.slice(tall.indexOf('╰') + 1)).toEqual(['name+species', 'xp:block', 'vitals', 'vitals', 'gate'])
+    // Too short to keep a speech line and the gate: the gate goes, as the first vitals row would before it.
+    expect(shape(layoutInfo({ rows: 3, width: 40, said: SHORT, vitals: VITALS, gate: 'row' }))).toEqual(['name xp:line', 'vitals', `"${SHORT}"`])
+  })
+
+  test('a talking picture grows for the gate as it does for its speech', () => {
+    const compact = formFor('compact', FRAME, true)
+    const column = (said: string | null) => ({ width: 40, said, vitals: VITALS, gate: 'row' as const })
+    expect(bandRows(compact, column(null), 20)).toBe(4)
+    expect(bandRows(compact, column(SHORT), 20)).toBe(4)
+    // Three lines under the shared name row, the vitals and the gate.
+    expect(bandRows(compact, column(LONG), 20)).toBe(6)
+    expect(bandRows(compact, column(LONG), 5)).toBe(5)
+    // A picture talks from its bottom row up however far it grows: no bubble.
+    const six = shape(layoutInfo({ ...column(LONG), rows: 6, isTall: false }))
+    expect(six.slice(0, 3)).toEqual(['name xp:line', 'vitals', 'gate'])
+    expect(six.slice(3).some(row => row.includes('…'))).toBe(false)
+    // Half blocks take the column whole, gate and all.
+    expect(bandRows(formFor('full', FRAME, true), { ...column(`${LONG} ${LONG}`), width: 30 }, 20)).toBe(columnRows({ ...column(`${LONG} ${LONG}`), width: 30 }))
+  })
+
+  test('a mini gate goes at the end of the last vitals row, or of the shared name row when no vitals fit', () => {
+    expect(shape(layoutInfo({ rows: 2, width: 40, said: null, vitals: VITALS, gate: 'mini' }))).toEqual(['name xp:line', 'vitals miniGate'])
+    expect(shape(layoutInfo({ rows: 2, width: 25, said: null, vitals: VITALS, gate: 'mini' }))).toEqual(['name xp:line', 'vitals miniGate'])
+    expect(shape(layoutInfo({ rows: 2, width: 40, said: SHORT, vitals: VITALS, gate: 'mini' }))).toEqual(['name xp:line miniGate', `"${SHORT}"`])
+    expect(shape(layoutInfo({ rows: 1, width: 40, said: null, vitals: VITALS, gate: 'mini' }))).toEqual(['name xp:line miniGate'])
+    // It takes no row of its own, and the vitals leave it room at the end of theirs.
+    expect(columnRows({ width: 56, said: null, vitals: VITALS, gate: 'mini' })).toBe(3)
+    expect(columnRows({ width: 40, said: null, vitals: VITALS, gate: 'mini' })).toBe(4)
+  })
+
+  test('a gate never makes the column taller than its rows', () => {
+    const said = `${LONG} ${LONG} ${LONG}`
+    for (const gate of ['row', 'mini'] as const) {
+      for (const rows of [1, 2, 3, 4, 5, 6, 9, 10]) {
+        for (const width of [16, 30, 56]) {
+          for (const hasVitals of [false, true]) {
+            for (const s of [null, SHORT, LONG, said]) {
+              expect(rowsOf(layoutInfo({ rows, width, said: s, vitals: hasVitals ? VITALS : [], gate }))).toBeLessThanOrEqual(rows)
+            }
+          }
+        }
+      }
+    }
   })
 })

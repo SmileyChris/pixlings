@@ -129,13 +129,25 @@ export const pictureOf = (frame: Pixels, grid: { columns: number; rows: number }
 /**
  * One piece of a row: the name (`isShort`: with the level only, else the species and stars too),
  * the XP bar (`block` beside a tall sprite, `half` a lighter one, `line` sharing the name's row),
- * the vitals `from` up to `to`, or a line of speech after a bar in the rarity color.
+ * the vitals `from` up to `to`, a line of speech after a bar in the rarity color, the effort gate
+ * on a row of its own, or the mini gate at the end of a row.
  */
 export type Part =
   | { readonly kind: 'name'; readonly isShort: boolean }
   | { readonly kind: 'xp'; readonly bar: 'block' | 'half' | 'line'; readonly width: number }
   | { readonly kind: 'vitals'; readonly from: number; readonly to: number }
   | { readonly kind: 'quote'; readonly text: string }
+  | { readonly kind: 'gate' }
+  | { readonly kind: 'miniGate' }
+
+/** The effort gate the column holds: a row of its own, a few letters at the end of a row, or none. */
+export type Gate = 'row' | 'mini' | null
+
+/**
+ * What the column holds, whatever its rows. `isTall` overrides what its rows say: a picture with a
+ * gate row talks from its bottom row up however far it grows, as `bandRows` counts it.
+ */
+type Column = { readonly width: number; readonly said: string | null; readonly vitals: readonly string[]; readonly gate?: Gate; readonly isTall?: boolean }
 
 /** A bordered bubble (its lines and two rows of border), or one row of parts. */
 export type InfoBlock =
@@ -143,6 +155,9 @@ export type InfoBlock =
   | { readonly kind: 'row'; readonly parts: readonly Part[] }
 
 export const blockRows = (b: InfoBlock): number => (b.kind === 'bubble' ? b.lines.length + 2 : 1)
+
+/** The mini gate's columns at the end of a row: two spaces, then `LMHXM A`. */
+export const MINI_GATE_COLUMNS = 9
 
 /** A band this tall has the bubble and the solid bar; shorter ones draw lighter. */
 const TALL_ROWS = 5
@@ -173,9 +188,11 @@ export const truncate = (text: string, width: number): string =>
  * half blocks take what the column needs whole; a picture, the speech's lines and the name and
  * XP's row above them, growing up only past its own rows.
  */
-export const bandRows = (form: Form, column: { width: number; said: string | null; vitals: readonly string[] }, maxRows: number): number => {
+export const bandRows = (form: Form, column: Column, maxRows: number): number => {
   if (!column.said || form.kind === 'line') return form.rows
-  const wants = form.kind === 'cells' ? columnRows(column) : wrap(column.said, column.width - QUOTE_INSET).length + 1
+  // A picture's speech goes under the name and XP's shared row; with a gate row, under the first vitals row and the gate too.
+  const above = column.gate === 'row' ? (column.vitals.length > 0 ? 3 : 2) : 1
+  const wants = form.kind === 'cells' ? columnRows(column) : wrap(column.said, column.width - QUOTE_INSET).length + above
   return Math.min(maxRows, Math.max(form.rows, wants))
 }
 
@@ -196,20 +213,34 @@ const firstLines = (lines: readonly string[], n: number, width: number): string[
  * every row. Past that it is cut: in a tall band, in the bubble above the name, XP and vitals; in
  * a short one, on every row. Nothing makes the column taller than `rows` (a band that grows to
  * its speech asks `bandRows` first).
+ *
+ * A gate row goes under the vitals. Short of rows it stays while the name and XP come to share a
+ * row and while speech is cut to the rows left, and goes before the first vitals row would. A mini
+ * gate takes no row: it ends the last vitals row shown, or the name's row when none is.
  */
-export const layoutInfo = (input: { rows: number; width: number; said: string | null; vitals: readonly string[] }): InfoBlock[] => {
+export const layoutInfo = (input: { rows: number } & Column): InfoBlock[] => {
+  const blocks = layoutRows(input)
+  return input.gate === 'mini' ? withMiniGate(blocks) : blocks
+}
+
+const layoutRows = (input: { rows: number } & Column): InfoBlock[] => {
   const { rows, width } = input
   const said = input.said ?? ''
-  const isTall = rows >= TALL_ROWS
+  const isTall = input.isTall ?? rows >= TALL_ROWS
   const name: InfoBlock = { kind: 'row', parts: [{ kind: 'name', isShort: false }] }
   const xp: InfoBlock = { kind: 'row', parts: [{ kind: 'xp', bar: isTall ? 'block' : 'half', width: 12 }] }
   const shared: InfoBlock = { kind: 'row', parts: [{ kind: 'name', isShort: true }, { kind: 'xp', bar: 'line', width: 10 }] }
-  const vitals: InfoBlock[] = packVitals(input.vitals, width).map(([from, to]) => ({ kind: 'row', parts: [{ kind: 'vitals', from, to }] }))
+  // A mini gate may end a vitals row, so the vitals leave it room.
+  const vitalsWidth = input.gate === 'mini' ? width - MINI_GATE_COLUMNS : width
+  const vitals: InfoBlock[] = packVitals(input.vitals, vitalsWidth).map(([from, to]) => ({ kind: 'row', parts: [{ kind: 'vitals', from, to }] }))
   const first = vitals.slice(0, 1)
   const stacks: InfoBlock[][] = vitals.length
     ? [[name, xp, ...vitals], [name, xp, ...first], [shared, ...first], [shared], []]
     : [[name, xp], [shared], []]
-  if (!said) return stacks.find(s => s.length <= rows) ?? []
+  // The stacks that keep a gate row: as far as the name and XP sharing a row, never without the first vitals row.
+  const gate: InfoBlock = { kind: 'row', parts: [{ kind: 'gate' }] }
+  const gated: InfoBlock[][] = input.gate !== 'row' ? [] : stacks.slice(0, vitals.length ? 3 : 2).map(stack => [...stack, gate])
+  if (!said) return [...gated, ...stacks].find(s => s.length <= rows) ?? []
 
   const bubbled = wrap(said, width - BUBBLE_INSET)
   const quoted = wrap(said, width - QUOTE_INSET)
@@ -217,21 +248,42 @@ export const layoutInfo = (input: { rows: number; width: number; said: string | 
   const quotes = (n: number): InfoBlock[] =>
     firstLines(quoted, n, width - QUOTE_INSET).map(text => ({ kind: 'row', parts: [{ kind: 'quote', text }] }))
 
-  // The speech whole, with as much beside it as fits.
-  for (const stack of stacks) {
-    const room = rows - stack.length
-    // A tall band keeps its speech in the bubble, cut below if it must be.
-    if (isTall && room >= bubbled.length + 2) return [bubble(bubbled.length), ...stack]
-    if (!isTall && quoted.length <= room) return [...stack, ...quotes(quoted.length)]
+  /** The speech whole, beside the first of the stacks it fits with. */
+  const whole = (from: readonly InfoBlock[][]): InfoBlock[] | undefined => {
+    for (const stack of from) {
+      const room = rows - stack.length
+      // A tall band keeps its speech in the bubble, cut below if it must be.
+      if (isTall && room >= bubbled.length + 2) return [bubble(bubbled.length), ...stack]
+      if (!isTall && quoted.length <= room) return [...stack, ...quotes(quoted.length)]
+    }
+    return undefined
   }
+
+  // The gate stays with the speech whole, or cut to the rows the smallest of its stacks leaves.
+  const withGate = whole(gated)
+  if (withGate) return withGate
+  const room = (stack: readonly InfoBlock[]): number => rows - stack.length
+  const keptGate = gated.find(stack => room(stack) >= (isTall ? 3 : 1))
+  if (keptGate) return isTall ? [bubble(room(keptGate) - 2), ...keptGate] : [...keptGate, ...quotes(room(keptGate))]
+
+  // The speech whole, with as much beside it as fits.
+  const shown = whole(stacks)
+  if (shown) return shown
   // Cut to the room there is.
   const kept = isTall ? stacks.find(stack => rows - stack.length >= 3) : undefined
   return kept ? [bubble(rows - kept.length - 2), ...kept] : quotes(rows)
 }
 
+/** The mini gate at the end of the last vitals row, or of the name's row when no vitals are shown. */
+const withMiniGate = (blocks: InfoBlock[]): InfoBlock[] => {
+  const holds = (kind: Part['kind']) => (b: InfoBlock) => b.kind === 'row' && b.parts.some(p => p.kind === kind)
+  const at = blocks.findLastIndex(holds('vitals'))
+  const end = at >= 0 ? at : blocks.findLastIndex(holds('name'))
+  return blocks.map((b, i) => (i === end && b.kind === 'row' ? { kind: 'row', parts: [...b.parts, { kind: 'miniGate' }] } : b))
+}
+
 /** The rows the column takes to show all of it: what a band that grows to its speech is given. */
-export const columnRows = (input: { width: number; said: string | null; vitals: readonly string[] }): number =>
-  layoutInfo({ ...input, rows: Infinity }).reduce((n, b) => n + blockRows(b), 0)
+export const columnRows = (input: Column): number => layoutInfo({ ...input, rows: Infinity }).reduce((n, b) => n + blockRows(b), 0)
 
 /**
  * The vitals in rows of `width`, joined by ` · `, as `[from, to)` ranges: each row as many as fit
