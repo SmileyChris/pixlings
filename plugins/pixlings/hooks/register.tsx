@@ -3,7 +3,7 @@ import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
 
 import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
-import { award, BADGES, countDay, earnedBadges, localDate, recapLine, touchDay } from './lib/badges.ts'
+import { award, BADGES, badgeTitle, countDay, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
 import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
@@ -671,11 +671,12 @@ export const register: Register = (on, options) => {
       priority: PRIORITY.celebrate,
       holdMs: 3500,
       line: 'badge',
-      slots: { item: `${first.emoji} ${first.name}` },
+      slots: { item: `${first.badge.emoji} ${badgeTitle(first.badge, first.tier)}` },
       sound: 'badge',
     })
     const more = earned.length > 1 ? ` (+${earned.length - 1} more)` : ''
-    toast(`🏅 Badge: ${first.emoji} ${first.name}, ${first.how.toLowerCase()}${more}. See /pixling badges`, 8000)
+    const how = first.badge.how(first.badge.steps[first.tier - 1] ?? 1).toLowerCase()
+    toast(`🏅 Badge: ${first.badge.emoji} ${badgeTitle(first.badge, first.tier)}, ${how}${more}. See /pixling badges`, 8000)
   }
 
   /** The pixling's first look at today: moves the streak, and hands back yesterday's work once. */
@@ -2139,10 +2140,12 @@ export const register: Register = (on, options) => {
       .replace(/^-+|-+$/g, '') || 'pixling'
 
   const badgeLine = (b: (typeof BADGES)[number], p: Pixling): string => {
-    const [have, need] = b.progress(p)
-    const isEarned = p.badges[b.id] !== undefined
-    const state = isEarned ? 'earned' : `${xpBar(have, need, 10)} ${have}/${need}`
-    return `${isEarned ? b.emoji : '🔒'} ${b.name.padEnd(19)} ${state.padEnd(18)} ${b.how}`
+    const tier = tierOf(b, p)
+    const medal = medalOf(b, tier)
+    const next = progressOf(b, p)
+    const state = next ? `${medal ? `${medal} ` : ''}${xpBar(next.have, next.need, 10)} ${next.have}/${next.need}` : `${medal ? `${medal} ` : ''}earned`
+    const how = b.how(next ? next.need : (b.steps[b.steps.length - 1] ?? 1))
+    return `${tier > 0 ? b.emoji : '🔒'} ${b.name.padEnd(19)} ${state.padEnd(18)} ${how}`
   }
 
   /** The text card: who it is, its personality, whose Buddy it was, what its quips cost. */
@@ -2771,7 +2774,7 @@ export const register: Register = (on, options) => {
       `Tests passed ${st.testsPassed}   Bugs squashed ${st.bugsSquashed}   Commits ${st.commits}   PRs ${st.prs}`,
       `Turns ${st.turns}   Pushes ${st.pushes}   Naps ${st.naps}   Pets ${st.pets}   Close calls ${st.risky}`,
       `${daysTogether(p, now())} day(s) together · 🔥 streak ${p.streak.days} (best ${p.streak.best}) · ${st.sessions} sessions · dex ${p.dex.length}/${SPECIES.length}`,
-      `Badges ${earned.length}/${BADGES.length} ${earned.map(b => b.emoji).join(' ')}`,
+      `Badges ${earned.length}/${BADGES.length} ${earned.map(b => b.emoji + medalOf(b, tierOf(b, p))).join(' ')}`,
       ...(heard.length > 0 ? [`Heard: ${heard.map(t => `${t.label} ×${t.n}`).join(' · ')}`] : []),
       `Prompt cache: ${hit === null ? 'no requests yet' : `${hit}% served from cache`} · lives ${cache.ttl === '1h' ? 'an hour' : '5 minutes'}${cache.isTtlKnown ? '' : ' (assumed)'} · ${cache.coldStarts} cold start(s) this session`,
       '/pixling share saves this as a trading card · /pixling badges',

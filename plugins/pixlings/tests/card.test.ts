@@ -93,14 +93,14 @@ describe('the hover card icons', () => {
     expect(words).toContain('3-day streak')
     expect(words).toContain('best 3')
     expect(words).toContain('2 days together')
-    expect(words).toContain('5/16')
+    expect(words).toContain('5/18')
     expect(/\p{Extended_Pictographic}/u.test(words)).toBe(false)
   })
 
   test('with no room for the shelf it shows no badge at all, only the count', () => {
     const tree = drawCard(kit('terminal'), model(['hello', 'dangerous']), 40, FILL, '#c0caf5')
     expect(nodes(tree).filter(n => n.type === 'Raster').map(n => n.props['key'])).toEqual(['card-flame'])
-    expect(text(tree)).toContain('2/16')
+    expect(text(tree)).toContain('2/18')
   })
 
   test('the desktop draws the same icons as Svgs, each named for a reader', () => {

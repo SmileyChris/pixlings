@@ -14,7 +14,7 @@ import type {
 } from 'claude-code'
 
 import type { PixlingsEffect, PixlingsMini } from '../../types'
-import { BADGES, earnedBadges, localDate } from './badges.ts'
+import { BADGES, badgeTitle, earnedBadges, localDate, medalOf, progressOf, tierOf } from './badges.ts'
 import type { Badge } from './badges.ts'
 import { blank, renderFrame, renderSilhouette, stamp, TRANSPARENT } from './canvas.ts'
 import type { Pixels } from './canvas.ts'
@@ -152,16 +152,23 @@ const picture = (kit: RoomKit, frame: Pixels, scale: number, key: string, alt: s
 
 // What it knows -------------------------------------------------------------------------------
 
-/** The locked badge nearest to earned: the most of its way there, the first listed on a tie. */
-export const nextBadge = (p: Pixling): { badge: Badge; have: number; need: number } | null => {
-  let best: { badge: Badge; have: number; need: number } | null = null
+type Next = { badge: Badge; have: number; need: number; tier: number }
+
+/**
+ * The step nearest to earned, a locked badge or a tiered one's next tier: the most of its way
+ * there, the first listed on a tie. `tier` is the tier earned so far.
+ */
+export const nextBadge = (p: Pixling): Next | null => {
+  let best: Next | null = null
   for (const badge of BADGES) {
-    if (p.badges[badge.id] !== undefined) continue
-    const [have, need] = badge.progress(p)
-    if (!best || have / need > best.have / best.need) best = { badge, have, need }
+    const next = progressOf(badge, p)
+    if (next && (!best || next.have / next.need > best.have / best.need)) best = { badge, ...next }
   }
   return best
 }
+
+/** What the next step is called: the badge, or past its first tier the tier it reaches for. */
+const nextTitle = (n: Next): string => (n.tier === 0 ? n.badge.name : badgeTitle(n.badge, n.tier + 1))
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
 
@@ -576,6 +583,12 @@ const garden = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
   })
 }
 
+/** "🚀 Liftoff", "🐛 Exterminator · Silver 🥈". */
+const shelfTitle = (b: Badge, tier: number): string => {
+  const medal = medalOf(b, tier)
+  return `${b.emoji} ${badgeTitle(b, tier)}${medal ? ` ${medal}` : ''}`
+}
+
 const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
   const { Box, Text } = kit
   const earned = earnedBadges(p)
@@ -600,7 +613,7 @@ const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
             Box({
               width: cell,
               children: [
-                Text({ children: `${b.emoji} ${b.name}` }),
+                Text({ children: shelfTitle(b, tierOf(b, p)) }),
                 seat.isNarrow ? null : Text({ dimColor: true, children: ` ${localDate(p.badges[b.id] ?? 0)}` }),
               ],
             }),
@@ -609,20 +622,24 @@ const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
       ),
       Box({
         marginTop: 1,
-        children: [Text({ children: locked === 0 ? '🏆 Every badge is on the shelf.' : `🔒 ${locked} still locked` })],
+        children: [
+          Text({
+            children: next === null ? '🏆 Every badge is on the shelf, every tier gold.' : locked === 0 ? '🏆 Every badge is on the shelf.' : `🔒 ${locked} still locked`,
+          }),
+        ],
       }),
       next
         ? Box({
             flexDirection: 'row',
             flexWrap: 'wrap',
             children: [
-              Text({ children: `Next: ${next.badge.emoji} ${next.badge.name} ` }),
+              Text({ children: `Next: ${next.badge.emoji} ${nextTitle(next)} ` }),
               Text({ color: '#ffc53d', children: xpBar(next.have, next.need, 10) }),
               Text({ dimColor: true, children: ` ${next.have}/${next.need}` }),
             ],
           })
         : null,
-      next ? Text({ dimColor: true, wrap: 'wrap', children: next.badge.how }) : null,
+      next ? Text({ dimColor: true, wrap: 'wrap', children: next.badge.how(next.need) }) : null,
     ],
   })
 }

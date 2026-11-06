@@ -363,7 +363,7 @@ describe('the band', () => {
     await clock.advance(5000)
     expect(toasts.filter(t => t.includes('Exterminator')).length).toBe(1)
     const list = await $.command.run({ command: 'pixling', args: 'badges' } as never)
-    expect(list.text).toMatch(/Badges 2\/16/)
+    expect(list.text).toMatch(/Badges 2\/18/)
   })
 
   test('/pixling share saves a PNG through a process and copies a post', async ($, on) => {

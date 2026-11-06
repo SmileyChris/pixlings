@@ -144,12 +144,12 @@ describe('badges and the day', () => {
   test('a badge is earned once, when the record first passes it', () => {
     let p: Pixling = { ...hatchPixling(seeded(1), T0), isShiny: false }
     let r = award(p, T0)
-    expect(r.earned.map(b => b.id)).toContain('hello')
+    expect(r.earned.map(e => e.badge.id)).toContain('hello')
     p = r.pixling
     expect(award(p, T0 + 1).earned).toEqual([])
-    p = { ...p, stats: { ...p.stats, bugsSquashed: 10 } }
+    p = { ...p, lifetime: { ...p.lifetime, bugsSquashed: 10 } }
     r = award(p, T0 + 2)
-    expect(r.earned.map(b => b.id)).toEqual(['exterminator'])
+    expect(r.earned.map(e => e.badge.id)).toEqual(['exterminator'])
     expect(earnedBadges(r.pixling).map(b => b.id).slice(0, 2)).toEqual(['hello', 'exterminator'])
     expect(new Set(BADGES.map(b => b.id)).size).toBe(BADGES.length)
     for (const b of BADGES) {

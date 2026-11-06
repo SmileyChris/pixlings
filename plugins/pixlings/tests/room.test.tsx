@@ -203,10 +203,10 @@ describe('the room', () => {
       expect((await ui.find({ type: 'Button', key: 'tab-garden' }))?.props['variant'], surface).toBe('primary')
 
       await ui.press({ key: 'tab-badges' })
-      expect(await ui.find({ type: 'Text', text: 'Badge shelf · 2/16' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'Badge shelf · 2/18' }), surface).toBeDefined()
       expect(await ui.find({ type: 'Text', text: '🥚 Hello, World' }), surface).toBeDefined()
       expect(await ui.find({ type: 'Text', text: '🚀 Liftoff' }), surface).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: '🔒 14 still locked' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '🔒 16 still locked' }), surface).toBeDefined()
       // 24 of 25 heard: the nearest badge, its bar and what it takes.
       expect(await ui.find({ type: 'Text', text: 'Next: 🙄 Absolutely Right' }), surface).toBeDefined()
       expect(await ui.find({ type: 'Text', text: ' 24/25' }), surface).toBeDefined()
@@ -421,7 +421,7 @@ describe('the band', () => {
       expect(text).toContain('4-day streak')
       expect(text).toContain('best 6')
       expect(text).toContain('33 days together')
-      expect(text).toContain('2/16')
+      expect(text).toContain('2/18')
       expect(text).toContain('Heard: "You\'re absolutely right" ×24 · "robust" ×3')
       // The flame and the badges are drawn as the pixling is, never as emoji.
       expect(/\p{Extended_Pictographic}/u.test(text), surface).toBe(false)
@@ -458,7 +458,7 @@ describe('the band', () => {
       const tree = await ui.drawn()
       expect((tree as Node).props?.['key'], surface).toBe('band')
       const reveal = hoverReveal(tree)
-      expect(textOf(reveal), surface).toContain('🔥 4-day streak · 🏅 2/16 · 33 days together')
+      expect(textOf(reveal), surface).toContain('🔥 4-day streak · 🏅 2/18 · 33 days together')
       // Sized to the room the line leaves, so revealing it squeezes nothing on the line.
       const width = Number(reveal?.props?.['width'])
       expect(width, surface).toBeGreaterThanOrEqual(12)
