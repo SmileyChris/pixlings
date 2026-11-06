@@ -36,7 +36,8 @@ const WHY_OPEN = 'auto: "'
 const WHY_CLOSE = '"'
 const GAP = '  '
 
-const columns = (segs: GateSeg[]): number => segs.reduce((n, s) => n + s.text.length, 0)
+/** The columns a row of segments takes. */
+export const gateColumns = (segs: readonly GateSeg[]): number => segs.reduce((n, s) => n + s.text.length, 0)
 
 /**
  * The rails that point the way the level just moved: from the old stop to the new one, while the shift lasts.
@@ -80,14 +81,14 @@ export function gateRow(v: GateView, width: number): GateSeg[] {
   const reason = v.isAuto ? v.why.replace(/\s+/g, ' ').trim() : ''
   if (reason) {
     // Columns left for the reason's own text once the label, the stops, the Auto slot and the quotes are there.
-    const room = width - columns(label) - columns(rest) - GAP.length - WHY_OPEN.length - WHY_CLOSE.length
+    const room = width - gateColumns(label) - gateColumns(rest) - GAP.length - WHY_OPEN.length - WHY_CLOSE.length
     // A cut reason needs two columns, a letter and the …; a lone … says nothing, so then the reason goes instead.
     const shown = reason.length <= room ? reason : room >= 2 ? cut(reason, room) : null
     if (shown !== null) {
       return [...label, ...rest, { text: GAP, role: 'sep' }, { text: WHY_OPEN + shown + WHY_CLOSE, role: 'why' }]
     }
   }
-  return columns(label) + columns(rest) <= width ? [...label, ...rest] : rest
+  return gateColumns(label) + gateColumns(rest) <= width ? [...label, ...rest] : rest
 }
 
 /** The gate for the narrow bands: one letter a level, no knob, and the Auto slot. The caller colours `active`. */

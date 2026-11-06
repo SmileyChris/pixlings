@@ -15,6 +15,8 @@ const SURFACES = ['terminal', 'desktop'] as const
 
 type Engine = Parameters<TestBody>[0]
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+/** What the judge answers: a level (its reason "judged <level>"), a level with its own reason, or null for no answer. */
+type Reply = Effort | { effort: Effort; why: string } | null
 
 const BAND = {
   plugin: 'pixlings',
@@ -55,8 +57,8 @@ const DUCK = {
   badges: { hello: 1 },
 }
 
-/** The engine beneath the pixling: a judge that answers in turn, a prompt box, toasts, and the model step. */
-const host = (on: On, replies: Effort[] = []) => {
+/** The engine beneath the pixling: a judge that answers in turn (medium once the replies run out), a prompt box, toasts, and the model step. */
+const host = (on: On, replies: Reply[] = []) => {
   const clock = mock.clock(on, { now: Date.parse('2026-10-03T12:00:00Z') })
   mock.store(on, { pixling: DUCK })
   mock.env(on, { OS: 'Windows_NT', USERPROFILE: 'C:\\Users\\tester' })
@@ -73,8 +75,10 @@ const host = (on: On, replies: Effort[] = []) => {
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('model.complete', ($, e) => {
     asked.push(e.prompt)
-    const next = queue.shift() ?? 'medium'
-    return { value: { isAnswered: true, text: `{"model":"opus","effort":"${next}","why":"judged ${next}","sure":0.9}`, usage: USAGE } } as never
+    const next = queue.length > 0 ? queue.shift()! : 'medium'
+    if (next === null) return { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: USAGE } } as never
+    const { effort, why } = typeof next === 'string' ? { effort: next, why: `judged ${next}` } : next
+    return { value: { isAnswered: true, text: `{"model":"opus","effort":"${effort}","why":"${why}","sure":0.9}`, usage: USAGE } } as never
   })
   on('ui.toast', ($, e) => {
     toasts.push(e.text)
@@ -419,6 +423,44 @@ describe('the effort gate in the band', () => {
     }
   })
 
+  for (const band of ['full', 'compact'] as const) {
+    test(`${band}: a wide band gives Auto’s reason whole, in the room the band has past the column`, { options: { band, roam: false } }, async ($, on) => {
+      const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])
+      await $.session.start(START)
+      await clock.advance(3000)
+      await ask($, 'refactor the auth module')
+      for (const surface of SURFACES) {
+        // 110 columns: the column beside the 22-column sprite stops at 56, which leaves the reason 14; the band has 84.
+        const ui = await $.ui.mount({ ...BAND, surface })
+        expect(strings(gateRowOf(await ui.drawn())!).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+        await ui.unmount()
+      }
+    })
+  }
+
+  test('the gate row widens alone: the rows around it keep the column’s 56 columns and what they say', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    // Its speech over, so the column holds its rows alone.
+    await clock.advance(20_000)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      const stats = nodes(await ui.drawn()).find(n => n.props?.['key'] === 'stats')!
+      const gate = gateRowOf(stats)
+      // The rows in the column's flow: the hover card is placed over them, outside it.
+      const others = (stats.children as Node[]).filter(row => row !== gate && row.props?.['position'] !== 'absolute')
+      expect(others.map(row => strings(row).join('')), surface).toEqual(['Quackers Lv 3 · Duck ★', '██░░░░░░░░░░ 21/113  ', '⏳ cache ~4:42 · 0% cached · opus 5.5'])
+      // The columns each row is laid out in: its own width, else the column's.
+      expect(others.map(row => row.props?.['width'] ?? stats.props?.['width']), surface).toEqual([56, 56, 56])
+      expect(strings(gate!).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+      // The column grows as far as that row's 61 columns, not to all the band has.
+      expect(stats.props?.['width'], surface).toBe(61)
+      await ui.unmount()
+    }
+  })
+
   test('autoscale fits the band with its gate: capped at 6 rows, compact is still picked and the gate shown', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock } = host(on, ['high'])
     await $.session.start(START)
@@ -490,6 +532,18 @@ describe('the effort gate in the room', () => {
     await ui.redraw()
     expect(await ui.find({ type: 'Text', text: '●L' })).toBeDefined()
     await ui.unmount()
+  })
+
+  test('the room gives Auto’s reason whole, in the width of its card', async ($, on) => {
+    const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount(room(surface))
+      expect(await ui.find({ type: 'Text', text: 'auto: "multi-file refactor"' }), surface).toBeDefined()
+      await ui.unmount()
+    }
   })
 
   test('autoEffort off: no gate in the room', { options: { autoEffort: false } }, async ($, on) => {

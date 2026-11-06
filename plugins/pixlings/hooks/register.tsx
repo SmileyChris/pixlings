@@ -5,7 +5,7 @@ import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto,
 import type { PixlingsPersona } from '../types'
 import { createAuto, readAutoConfig } from './effort/auto.ts'
 import type { Auto } from './effort/auto.ts'
-import { gateRow, miniGate } from './effort/gate.ts'
+import { gateColumns, gateRow, miniGate } from './effort/gate.ts'
 import { gateElements } from './effort/gate-view.ts'
 import type { GateActions } from './effort/gate-view.ts'
 import { askHaiku } from './effort/haiku.ts'
@@ -2853,6 +2853,12 @@ export const register: Register = (on, options) => {
     const cardWidth = isBrief
       ? Math.max(width, e.props.bodyColumns - spriteColumns - 2)
       : Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - spriteColumns - 4))
+    // The gate's row may take the room the band has past the column, as the card does, so its reason is not cut to the
+    // column's 56. The column widens as far as the gate's row needs and no further; every other row keeps the column's
+    // own width, so none of them moves.
+    const isGateRow = (block: (typeof blocks)[number]): boolean => block.kind === 'row' && block.parts.some(piece => piece.kind === 'gate')
+    const gateSegs = gate && blocks.some(isGateRow) ? gateRow(gate, Math.max(width, e.props.bodyColumns - spriteColumns - 4)) : null
+    const columnWidth = gateSegs ? Math.max(width, gateColumns(gateSegs)) : width
 
     /** One part of a row in the column (see `layoutInfo`). */
     const part = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], piece: Part) => {
@@ -2884,14 +2890,15 @@ export const register: Register = (on, options) => {
       }
       if (piece.kind === 'gate' || piece.kind === 'miniGate') {
         if (!gate) return []
-        return piece.kind === 'gate' ? gateElements({ Text, Button }, gateRow(gate, width), color, acts) : [mini(Box, Text, Button)]
+        if (piece.kind === 'miniGate') return [mini(Box, Text, Button)]
+        return gateSegs ? gateElements({ Text, Button }, gateSegs, color, acts) : []
       }
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
 
     const info = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], kit: RoomKit) => (
       // Keyed, so it is the card's hover scope: the pointer over the stats opens it, not over the sprite.
-      <Box key="stats" flexDirection="column" marginLeft={1} flexShrink={1} width={width}>
+      <Box key="stats" flexDirection="column" marginLeft={1} flexShrink={1} width={columnWidth}>
         {blocks.map(block =>
           block.kind === 'bubble' ? (
             <Box borderStyle="round" borderColor={color} paddingX={1} width={width} flexDirection="column">
@@ -2900,7 +2907,9 @@ export const register: Register = (on, options) => {
               ))}
             </Box>
           ) : (
-            <Box flexDirection="row">{block.parts.flatMap(piece => part(Box, Text, Button, piece))}</Box>
+            <Box flexDirection="row" width={isGateRow(block) ? columnWidth : width}>
+              {block.parts.flatMap(piece => part(Box, Text, Button, piece))}
+            </Box>
           ),
         )}
         {/* Opaque, with its own ink, so the rows it covers never show through, on a dark terminal or a light one. */}
