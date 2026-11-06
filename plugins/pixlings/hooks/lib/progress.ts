@@ -266,6 +266,13 @@ const HAT_LEVELS = new Set(UNLOCKS.map(u => u.level))
 const DROPPABLE: readonly (Face | Neck)[] = [...FACE_IDS, ...NECK_IDS]
 const isFacePiece = (id: string): boolean => (FACE_IDS as readonly string[]).includes(id)
 
+/** The finest of each slot: found only once the rest of its slot has been. */
+export const LAST_PIECES: readonly (Face | Neck)[] = ['monocle', 'medal']
+
+/** What can drop next from `left`: a last piece waits while anything else of its slot is still to find. */
+const droppable = (left: readonly (Face | Neck)[]): (Face | Neck)[] =>
+  left.filter(id => !LAST_PIECES.includes(id) || !left.some(other => other !== id && isFacePiece(other) === isFacePiece(id)))
+
 /** One of `left` for the roll `r` in [0, 1): each piece of the slot `owned` has more of `toward` times as likely. */
 const pickPiece = (left: readonly (Face | Neck)[], owned: ReadonlySet<string>, toward: number, r: number): Face | Neck => {
   const faces = [...owned].filter(isFacePiece).length
@@ -289,7 +296,8 @@ const rollAt = (hatchedAt: number, level: number, salt: number): number => {
 /**
  * What dropped at each level up to `level`, in order: from `odds.from`, a level with no hat rolls
  * `odds.chance` for a piece the pixling hasn't got, doubling after every `odds.doubleAfter` empty levels in a row, picked at
- * random from the rest, leaning toward the slot it has more of. The rolls come from the egg, so they need no saving.
+ * random from the rest, leaning toward the slot it has more of; the monocle and the medal come last of their slots.
+ * The rolls come from the egg, so they need no saving.
  */
 export const dropsOf = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number, odds: DropOdds = DROP_ODDS): Unlock[] => {
   const owned = new Set<string>(p.kept)
@@ -304,7 +312,7 @@ export const dropsOf = (p: Pick<Pixling, 'hatchedAt' | 'kept'>, level: number, o
       continue
     }
     dry = 0
-    const id = pickPiece(left, owned, odds.toward, rollAt(p.hatchedAt, at, 2))
+    const id = pickPiece(droppable(left), owned, odds.toward, rollAt(p.hatchedAt, at, 2))
     owned.add(id)
     out.push(isFacePiece(id) ? { level: at, face: id as Face, label: GEAR_LABELS[id] } : { level: at, neck: id as Neck, label: GEAR_LABELS[id] })
   }

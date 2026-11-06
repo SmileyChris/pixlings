@@ -4,7 +4,7 @@ import { bustOf } from '../hooks/lib/band.ts'
 import { CANVAS_H, CANVAS_W, layoutFor, mirror, renderFrame, SPRITE_X } from '../hooks/lib/canvas.ts'
 import { drawGear, FACE_IDS, HAT_IDS, isHat, isNeck, NECK_IDS } from '../hooks/lib/gear.ts'
 import type { GearId } from '../hooks/lib/gear.ts'
-import { DROP_ODDS, dropsOf, gain, gearOf, hatchPixling, mergeSave, revive, UNLOCKS, xpForLevel } from '../hooks/lib/progress.ts'
+import { DROP_ODDS, dropsOf, LAST_PIECES, gain, gearOf, hatchPixling, mergeSave, revive, UNLOCKS, xpForLevel } from '../hooks/lib/progress.ts'
 import { SPECIES } from '../hooks/lib/sprites.ts'
 import type { Species } from '../hooks/lib/sprites.ts'
 
@@ -207,5 +207,23 @@ describe('gear drops', () => {
     const merged = mergeSave(stored, base, ours)
     expect(merged.neck).toBe('scarf')
     expect(merged.kept).toEqual(['shades'])
+  })
+
+  test('the monocle and the medal come last of their slots; the rest in any order', () => {
+    const firsts = new Set<string>()
+    for (const e of eggs) {
+      const drops = dropsOf(e, 99)
+      for (const last of LAST_PIECES) {
+        const isFace = (FACE_IDS as readonly string[]).includes(last)
+        const slot = drops.filter(u => (isFace ? u.face : u.neck))
+        const at = slot.findIndex(u => (u.face ?? u.neck) === last)
+        // Found, it is the last of its slot found.
+        if (at >= 0) expect(at).toBe((isFace ? FACE_IDS : NECK_IDS).length - 1)
+      }
+      const first = drops.find(u => u.face)
+      if (first) firsts.add(first.face!)
+    }
+    // The other faces still come first in any order.
+    expect(firsts.size).toBe(FACE_IDS.length - 1)
   })
 })
