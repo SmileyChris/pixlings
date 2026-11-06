@@ -4,7 +4,7 @@ import { award, BADGES, badgeTitle, howOf, progressOf, tierOf } from '../hooks/l
 import type { Badge } from '../hooks/lib/badges.ts'
 import { bump, gain, hatchPixling, mergeSave, nextEgg, rehatch, revive, shinyEggOf } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
-import { nextTitle, shelfTitle } from '../hooks/lib/room.ts'
+import { cellWidth, nextTitle, shelfLayout, shelfTitle } from '../hooks/lib/room.ts'
 
 const seeded = (seed: number) => () => {
   seed = (seed * 1103515245 + 12345) % 2 ** 31
@@ -159,5 +159,21 @@ describe('the room names tiers by medal', () => {
   test('next: the medal it reaches for, none for a locked badge', () => {
     expect(nextTitle({ badge: badge('exterminator'), have: 20, need: 50, tier: 1 })).toBe('🐛 Exterminator 🥈')
     expect(nextTitle({ badge: badge('absolutelyRight'), have: 24, need: 25, tier: 0 })).toBe('🙄 Absolutely Right')
+  })
+})
+
+describe('the shelf fits its widest title', () => {
+  test('emoji take two cells', () => {
+    expect(cellWidth('💣 Living Dangerously 🥉')).toBe(24)
+    expect(cellWidth('⏳ Limit Survivor')).toBe(17)
+  })
+
+  test('dates go before a title wraps', () => {
+    // The room from the report: 61 columns, "💣 Living Dangerously 🥉" the widest.
+    expect(shelfLayout(61, 24, false)).toEqual({ perRow: 2, showDates: false })
+    expect(shelfLayout(80, 24, false)).toEqual({ perRow: 2, showDates: true })
+    expect(shelfLayout(120, 24, false)).toEqual({ perRow: 3, showDates: true })
+    expect(shelfLayout(48, 24, false)).toEqual({ perRow: 1, showDates: true })
+    expect(shelfLayout(40, 24, true)).toEqual({ perRow: 1, showDates: false })
   })
 })

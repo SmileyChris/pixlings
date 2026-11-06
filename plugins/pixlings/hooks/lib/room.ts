@@ -586,6 +586,36 @@ const garden = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
   })
 }
 
+/**
+ * The cells `text` takes in a terminal: an emoji two, a variation selector none, the rest one.
+ * Enough for the shelf's titles, whose emoji are all wide.
+ */
+export const cellWidth = (text: string): number => {
+  let w = 0
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0
+    w += c === 0xfe0f || c === 0x200d ? 0 : c >= 0x1f000 || (c >= 0x2300 && c <= 0x27bf) ? 2 : 1
+  }
+  return w
+}
+
+/** " 2026-10-30" after a title. */
+const DATE_CELLS = 11
+
+/**
+ * How the shelf lays out its titles, `widest` cells at most: as many a row as fit with their dates,
+ * up to three; if two only fit without them, two a row and no dates, so no title ever wraps.
+ */
+export const shelfLayout = (columns: number, widest: number, isNarrow: boolean): { perRow: number; showDates: boolean } => {
+  if (isNarrow) return { perRow: 1, showDates: false }
+  const withDates = widest + DATE_CELLS + 1
+  const dated = Math.min(3, Math.floor(columns / withDates))
+  if (dated >= 2) return { perRow: dated, showDates: true }
+  const bare = Math.min(3, Math.floor(columns / (widest + 1)))
+  if (bare >= 2) return { perRow: bare, showDates: false }
+  return { perRow: 1, showDates: columns >= withDates }
+}
+
 /** "🚀 Liftoff", "🐛 Exterminator 🥈": the medal says the tier, so the name needn't. */
 export const shelfTitle = (b: Badge, tier: number): string => {
   const medal = medalOf(b, tier)
@@ -597,7 +627,9 @@ const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
   const earned = earnedBadges(p)
   const locked = BADGES.length - earned.length
   const next = nextBadge(p)
-  const perRow = seat.isNarrow ? 1 : Math.max(1, Math.min(3, Math.floor(seat.columns / 30)))
+  const titles = new Map(earned.map(b => [b.id, shelfTitle(b, tierOf(b, p))]))
+  const widest = Math.max(0, ...[...titles.values()].map(cellWidth))
+  const { perRow, showDates } = shelfLayout(seat.columns, widest, seat.isNarrow)
   const cell = Math.floor(seat.columns / perRow)
   const rows: Badge[][] = []
   for (let i = 0; i < earned.length; i += perRow) rows.push(earned.slice(i, i + perRow))
@@ -616,8 +648,8 @@ const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
             Box({
               width: cell,
               children: [
-                Text({ children: shelfTitle(b, tierOf(b, p)) }),
-                seat.isNarrow ? null : Text({ dimColor: true, children: ` ${localDate(p.badges[b.id] ?? 0)}` }),
+                Text({ children: titles.get(b.id) ?? b.name }),
+                showDates ? Text({ dimColor: true, children: ` ${localDate(p.badges[b.id] ?? 0)}` }) : null,
               ],
             }),
           ),
