@@ -1,5 +1,6 @@
 // Shows what changed in Effortless's judge since plugins/pixlings/hooks/effort/judge.ts was copied from it.
-// Usage: node tools/effort-sync.ts <path-to-effortless-checkout>   (exit 0: in step, 1: differs or missing)
+// Usage: node tools/effort-sync.ts <path-to-effortless-checkout>
+// Exit codes: 0 in step, 1 differs (or a name is missing), 2 usage or read error (nothing was compared).
 //
 // Compares by name, not position: the `// synced:` line in judge.ts lists the declarations to compare, and each is
 // cut out of <checkout>/hooks/register.tsx and out of judge.ts. Both sides are normalised first: a leading `export `
@@ -9,12 +10,16 @@
 // A declaration is cut out lexically: from its `const`/`let`/`function`/`async function` line (with or without
 // `export`) to just before the next line at column 0 that isn't a continuation (`}`, `)`, `]`, or a line starting with
 // a backtick), outside any template literal. A comment, another declaration or any other statement at column 0 ends it.
+// Whether a line opens or closes a template literal is decided by its backticks, not counting ones inside a `//`
+// comment or a '…' or "…" string. As a guard, a declaration over MAX_LINES lines on either side is taken for a failed
+// cut: it prints `extraction looks wrong for <name>` and exits 2. Doc comments above a declaration aren't compared.
 // Never writes anything.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const MAX_LINES = 200
 const JUDGE = join(dirname(fileURLToPath(import.meta.url)), '../plugins/pixlings/hooks/effort/judge.ts')
 
 const normalise = (line: string): string =>
@@ -29,8 +34,16 @@ const syncedNames = (src: string): string[] => {
   return m ? m[1]!.split(',').map(s => s.trim()).filter(Boolean) : []
 }
 
-// Number of unescaped backticks on a line: an odd count flips whether the next line is inside a template literal.
-const backticks = (line: string): number => (line.replace(/\\./g, '').match(/`/g) ?? []).length
+// Number of backticks on a line that open or close a template literal: an odd count flips whether the next line is
+// inside one. Escaped characters, '…' and "…" strings and a trailing // comment are not counted.
+const backticks = (line: string): number =>
+  (
+    line
+      .replace(/\\./g, '')
+      .replace(/'[^']*'|"[^"]*"/g, '')
+      .replace(/\/\/.*$/, '')
+      .match(/`/g) ?? []
+  ).length
 
 // A top-level declaration of `name`, normalised and as lines, or undefined when the source has none.
 const extract = (src: string, name: string): string[] | undefined => {
@@ -81,23 +94,44 @@ const unified = (a: string[], b: string[], aName: string, bName: string): string
   return out.join('\n')
 }
 
-const checkout = process.argv[2]
-if (!checkout) {
-  console.error('Usage: node tools/effort-sync.ts <path-to-effortless-checkout>')
-  process.exit(2)
+const fail = (msg: string): never => {
+  console.error(msg)
+  return process.exit(2)
 }
 
-const upstreamSrc = readFileSync(join(checkout, 'hooks/register.tsx'), 'utf8')
-const upstreamVersion = (JSON.parse(readFileSync(join(checkout, '.claude-plugin/plugin.json'), 'utf8')) as { version?: string }).version
-const ours = readFileSync(JUDGE, 'utf8')
+const read = (path: string): string => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return fail(`cannot read ${path}`)
+  }
+}
+
+const checkout = process.argv[2]
+if (!checkout) fail('Usage: node tools/effort-sync.ts <path-to-effortless-checkout>')
+
+const upstreamSrc = read(join(checkout!, 'hooks/register.tsx'))
+const ours = read(JUDGE)
+
+const names = syncedNames(ours)
+if (!names.length) fail('no "// synced:" line in judge.ts')
+
+// Best effort: a missing or broken plugin.json only costs the version line.
+let upstreamVersion = 'unknown'
+try {
+  const v = (JSON.parse(readFileSync(join(checkout!, '.claude-plugin/plugin.json'), 'utf8')) as { version?: unknown }).version
+  if (typeof v === 'string') upstreamVersion = v
+} catch {}
 const heard = /^\/\/\s*Version:\s*(\S+)/m.exec(ours)?.[1]
 
-console.log(`Effortless upstream ${upstreamVersion ?? '?'}; judge.ts copied from ${heard ?? '?'}`)
+console.log(`Effortless upstream ${upstreamVersion}; judge.ts copied from ${heard ?? 'unknown'}`)
+
+const cuts = names.map(name => ({ name, mine: extract(ours, name), theirs: extract(upstreamSrc, name) }))
+for (const { name, mine, theirs } of cuts)
+  if ((mine?.length ?? 0) > MAX_LINES || (theirs?.length ?? 0) > MAX_LINES) fail(`extraction looks wrong for ${name}`)
 
 let bad = 0
-for (const name of syncedNames(ours)) {
-  const mine = extract(ours, name)
-  const theirs = extract(upstreamSrc, name)
+for (const { name, mine, theirs } of cuts) {
   if (!theirs) {
     console.log(`missing upstream: ${name}`)
     bad++
