@@ -13,6 +13,7 @@ A tiny pixel creature that lives above your Claude Code prompt and keeps an eye 
 - **It brings a squad.** Every subagent Claude starts gets a little helper beside your pixling, carrying that agent's tools. When an agent finishes, its helper jumps for joy and goes.
 - **Sound and notifications on every OS.** It calls you when Claude needs permission or finishes a long turn, with a chiptune ping and a desktop notification. The Mods sound API only plays on macOS, so Pixlings brings its own players for Windows and Linux. Under Ghostty on Linux, clicking the notification takes you back to the session's tab, and inside zellij to its pane too.
 - **It yelps before risky commands run.** `rm -rf`, `git push --force`, `git reset --hard`, `DROP TABLE`, `curl … | sh` and friends, read the way a shell reads them: `grep "DROP TABLE"` or a commit message that mentions `rm -rf` won't set it off.
+- **It picks the effort for you.** Claude Haiku reads each prompt and sets how hard Claude thinks, from low to max, so a quick question doesn't burn a deep think and a big refactor gets one. A gate in the band shows the level in use and lets you take over with a click.
 - **It hears everything.** Every "You're absolutely right" gets an eye roll and goes on the tally.
 
 ## Install
@@ -74,6 +75,20 @@ Under its name sits one line:
 
 Claude Code doesn't tell a mod how long the cache lives, so Pixlings works it out from each request's token counts. It starts by assuming five minutes, shown with a `~`. Two cache hits after long pauses prove you have the hour; a full miss inside the hour proves you don't. A `/model` switch names the lifetime outright. When you come back to a cold cache it tells you how many tokens were written again, and counts it.
 
+## Auto effort
+
+By default, each prompt you send is read by Claude Haiku 5.5, which picks the effort Claude answers at (low, medium, high, xhigh or max) and says why. The judging is [Effortless](https://github.com/HeyCubit/effortless)'s own, copied so it behaves the same. A bare "ok" or "go" keeps the level, naming one ("max effort") uses it as is, and an effort you pick always wins over Auto's. If Haiku doesn't answer, Auto switches itself off at medium and tells you.
+
+In the `full` and `compact` bands the effort gate sits on a row of its own:
+
+```
+effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
+```
+
+The knob is on the level in use, and when it moves, arrows show which way. Click a level to pick it (Auto turns off); click `A` to turn Auto on, and again to turn it off. In `slim` and `minimal` a mini gate, `LMHXM A`, takes the place of the effort at the end of the line: the level in use is lit, the rest dim, and `A` is lit while Auto is on. It's clickable the same way. `/pixling room` shows the gate too. Set `autoEffort` to `false` to turn all of it off.
+
+> **Coming from Effortless?** You don't need it alongside Pixlings. Both draw the band above the prompt, and Effortless's takes the slot, so Pixlings' never shows. Uninstall Effortless and Auto effort carries on here.
+
 ## Trading cards
 
 `/pixling share` draws a card, saves it to your home folder as `pixling-<name>.png`, opens it, and puts a post on your clipboard.
@@ -123,6 +138,10 @@ All in `/config`, under Pixlings.
 | `cacheTtl` | `auto`, `5m`, `1h` | `auto` |
 | `roam` | Walk around when Claude is idle | on |
 | `calm` | Hold still while idle, working or asleep (it still hops, shakes and celebrates when something happens), rest 30–90 s between strolls instead of 4–12 s, and count the cache down in minutes instead of seconds | off |
+| `autoEffort` | Claude Haiku picks the effort for each prompt, and the band shows the effort gate | on |
+| `effortFloor` | `low`, `medium`, `high`, `xhigh`, `max`: Auto never picks lower than this | `low` |
+| `effortCeiling` | `low`, `medium`, `high`, `xhigh`, `max`: Auto never picks higher than this | `max` |
+| `effortBias` | `-2` (cheaper) to `2` (smarter): tips the judge's close calls that way; sure calls stay as judged | `0` |
 | `heckle` | A faint eye roll and running count under Claude's "You're absolutely right" | off |
 
 ## Questions
