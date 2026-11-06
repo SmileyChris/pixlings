@@ -7,7 +7,7 @@
 // synced: MODELS, EFFORTS, cacheSafe, JUDGE_SYSTEM, parseVerdict, contextFrom, lastAssistantText, LEVEL_WORD, NAMED_LEVEL, LEVEL_OF, namedEffort, isFollowUp, endsOnQuestion, withAttachments, withMidTurn, keepsEffort, judgeQuestion, tipped, bounded, helperFloor
 //
 // The code below is Effortless's, kept as close to verbatim as it can be. The only edits: the types are declared
-// here instead of imported, `JUDGE_SYSTEM` and `judgeQuestion` are exported, and the Jev parts are left out.
+// here instead of imported, `JUDGE_SYSTEM` and `judgeQuestion` are exported, the Jev parts are left out, and the three `return EFFORTS[...]` lines (`tipped`, `bounded`, `helperFloor`) gain a `!` for noUncheckedIndexedAccess.
 //
 // MIT License
 //
@@ -190,19 +190,19 @@ export function judgeQuestion(prompt: string, current: Pick | null, context: str
 export function tipped(effort: Effort, sure: number | undefined, bias: number): Effort {
   if (!bias || sure === undefined || sure >= (Math.abs(bias) === 1 ? 0.65 : 0.85)) return effort
   const i = Math.max(0, Math.min(EFFORTS.length - 1, EFFORTS.indexOf(effort) + Math.sign(bias)))
-  return EFFORTS[i]
+  return EFFORTS[i]!
 }
 
 /** Floor and ceiling from the settings: what Auto picks stays between them. */
 export function bounded(effort: Effort, floor: Effort, ceiling: Effort): Effort {
   const lo = EFFORTS.indexOf(floor)
   const hi = Math.max(lo, EFFORTS.indexOf(ceiling))
-  return EFFORTS[Math.max(lo, Math.min(hi, EFFORTS.indexOf(effort)))]
+  return EFFORTS[Math.max(lo, Math.min(hi, EFFORTS.indexOf(effort)))]!
 }
 
 /** The lowest effort a helper gets: medium, or the person's Min when higher, never above their Max. A helper's answer
  * goes back to the chat unchecked, and at low it miscounted where medium did not (bench/results/helpers-2026-10-10.md). */
 export function helperFloor(floor: Effort, ceiling: Effort): Effort {
   const i = Math.min(Math.max(EFFORTS.indexOf(floor), EFFORTS.indexOf('medium')), EFFORTS.indexOf(ceiling))
-  return EFFORTS[i]
+  return EFFORTS[i]!
 }
