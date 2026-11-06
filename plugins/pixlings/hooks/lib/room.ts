@@ -14,7 +14,7 @@ import type {
 } from 'claude-code'
 
 import type { PixlingsEffect, PixlingsMini } from '../../types'
-import { BADGES, badgeTitle, earnedBadges, localDate, medalOf, progressOf, tierOf } from './badges.ts'
+import { BADGES, earnedBadges, localDate, medalOf, progressOf, tierOf } from './badges.ts'
 import type { Badge } from './badges.ts'
 import { blank, renderFrame, renderSilhouette, stamp, TRANSPARENT } from './canvas.ts'
 import type { Pixels } from './canvas.ts'
@@ -152,7 +152,7 @@ const picture = (kit: RoomKit, frame: Pixels, scale: number, key: string, alt: s
 
 // What it knows -------------------------------------------------------------------------------
 
-type Next = { badge: Badge; have: number; need: number; tier: number }
+export type Next = { badge: Badge; have: number; need: number; tier: number }
 
 /**
  * The step nearest to earned, a locked badge or a tiered one's next tier: the most of its way
@@ -167,8 +167,11 @@ export const nextBadge = (p: Pixling): Next | null => {
   return best
 }
 
-/** What the next step is called: the badge, or past its first tier the tier it reaches for. */
-const nextTitle = (n: Next): string => (n.tier === 0 ? n.badge.name : badgeTitle(n.badge, n.tier + 1))
+/** "🐛 Exterminator 🥈": the badge, and past its first tier the medal it reaches for. */
+export const nextTitle = (n: Next): string => {
+  const medal = n.tier === 0 ? '' : medalOf(n.badge, n.tier + 1)
+  return `${n.badge.emoji} ${n.badge.name}${medal ? ` ${medal}` : ''}`
+}
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
 
@@ -583,10 +586,10 @@ const garden = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
   })
 }
 
-/** "🚀 Liftoff", "🐛 Exterminator · Silver 🥈". */
-const shelfTitle = (b: Badge, tier: number): string => {
+/** "🚀 Liftoff", "🐛 Exterminator 🥈": the medal says the tier, so the name needn't. */
+export const shelfTitle = (b: Badge, tier: number): string => {
   const medal = medalOf(b, tier)
-  return `${b.emoji} ${badgeTitle(b, tier)}${medal ? ` ${medal}` : ''}`
+  return `${b.emoji} ${b.name}${medal ? ` ${medal}` : ''}`
 }
 
 const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
@@ -633,7 +636,7 @@ const shelf = (kit: RoomKit, seat: Seat, p: Pixling): RenderElement => {
             flexDirection: 'row',
             flexWrap: 'wrap',
             children: [
-              Text({ children: `Next: ${next.badge.emoji} ${nextTitle(next)} ` }),
+              Text({ children: `Next: ${nextTitle(next)} ` }),
               Text({ color: '#ffc53d', children: xpBar(next.have, next.need, 10) }),
               Text({ dimColor: true, children: ` ${next.have}/${next.need}` }),
             ],

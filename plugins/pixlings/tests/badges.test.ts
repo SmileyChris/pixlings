@@ -4,6 +4,7 @@ import { award, BADGES, badgeTitle, howOf, progressOf, tierOf } from '../hooks/l
 import type { Badge } from '../hooks/lib/badges.ts'
 import { bump, gain, hatchPixling, mergeSave, nextEgg, rehatch, revive, shinyEggOf } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
+import { nextTitle, shelfTitle } from '../hooks/lib/room.ts'
 
 const seeded = (seed: number) => () => {
   seed = (seed * 1103515245 + 12345) % 2 ** 31
@@ -145,5 +146,18 @@ describe('tiered badges', () => {
     // For the toast, after a comma: lowercase to start, names kept.
     expect(howOf(badge('heardItAll'), 1)).toBe("hear Claude's tics 50 times in all")
     expect(howOf(badge('centurion'), 3)).toBe('finish 10,000 turns')
+  })
+})
+
+describe('the room names tiers by medal', () => {
+  test('the shelf: a medal, no tier word', () => {
+    expect(shelfTitle(badge('exterminator'), 1)).toBe('🐛 Exterminator 🥉')
+    expect(shelfTitle(badge('dangerous'), 2)).toBe('💣 Living Dangerously 🥈')
+    expect(shelfTitle(badge('liftoff'), 1)).toBe('🚀 Liftoff')
+  })
+
+  test('next: the medal it reaches for, none for a locked badge', () => {
+    expect(nextTitle({ badge: badge('exterminator'), have: 20, need: 50, tier: 1 })).toBe('🐛 Exterminator 🥈')
+    expect(nextTitle({ badge: badge('absolutelyRight'), have: 24, need: 25, tier: 0 })).toBe('🙄 Absolutely Right')
   })
 })
