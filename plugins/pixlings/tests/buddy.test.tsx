@@ -636,6 +636,20 @@ describe('/buddy and /pixling room', () => {
     expect((db.get('pixling') as Pixling).stats.pets).toBe(4)
   })
 
+  test('a command that arrives while a reload is still reading the save waits for it', async ($, on) => {
+    const { clock } = host(on, { stored: DUCK })
+    // A reload runs session.start unawaited: the command can come first.
+    const started = $.session.start(START)
+    const [buddy, pixling] = await Promise.all([
+      $.command.run({ command: 'buddy', args: '' } as never),
+      $.command.run({ command: 'pixling', args: '' } as never),
+    ])
+    expect(buddy.text).toContain('Quackers the Duck')
+    expect(pixling.text).toContain('Quackers the Duck')
+    await started
+    await clock.advance(3000)
+  })
+
   test('/pixling room opens its pane, titled with its name', async ($, on) => {
     const { clock, opened } = host(on, { stored: DUCK })
     await $.session.start(START)

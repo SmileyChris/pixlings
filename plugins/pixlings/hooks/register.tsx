@@ -284,6 +284,12 @@ export const register: Register = (on, options) => {
   // while the pixling itself is in $.store and the band's values in $.state.
   let io: Io | null = null
   let pixling: Pixling | null = null
+  /** Settles once this load's session.start has read the save. A reload runs session.start
+   * unawaited, so a command can arrive while it is still reading. */
+  let markLoaded = (): void => undefined
+  const loaded = new Promise<void>(resolve => {
+    markLoaded = resolve
+  })
   let platform: Platform = 'unknown'
   let player: Player = { kind: 'none' }
   let soundRoot = ''
@@ -1553,14 +1559,17 @@ export const register: Register = (on, options) => {
     if (isUnreadable(raw)) {
       // Never written over: the session runs on a stand-in it does not save.
       pixling = touchDay(bump(hatchPixling(Math.random, now()), 'sessions'), now()).pixling
+      markLoaded()
       await readOnly(raw)
       await publishView()
     } else if (!stored) {
       // A first egg hatches where someone sees it, not in a -p run.
       if (!isQuiet) await hatch()
+      markLoaded()
     } else {
       savedAs = stored
       pixling = bump(stored, 'sessions')
+      markLoaded()
       const recap = greetDay()
       await publishView()
       await grant('session')
@@ -2199,7 +2208,14 @@ export const register: Register = (on, options) => {
     return { text: `You pet ${pixling.name}. ♥` }
   }
 
+  /** Waits, up to two seconds, for this load to read the save before a command answers. */
+  const whenLoaded = async (after: (ms: number, fn: () => void) => Timer): Promise<void> => {
+    if (pixling) return
+    await Promise.race([loaded, new Promise<void>(resolve => void after(2000, resolve))])
+  }
+
   on('command.run', { command: 'pixling' }, async ($, e) => {
+    await whenLoaded((ms, fn) => $.clock.after(ms, fn))
     if (!pixling) return { text: 'Your egg has not hatched yet.' }
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
     const arg = rest.join(' ').trim()
@@ -2374,6 +2390,7 @@ export const register: Register = (on, options) => {
 
   // The old /buddy's own words lead to the same places.
   on('command.run', { command: 'buddy' }, async ($, e) => {
+    await whenLoaded((ms, fn) => $.clock.after(ms, fn))
     if (!pixling) return { text: 'Your egg has not hatched yet.' }
     const sub = e.args.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
     switch (sub) {
