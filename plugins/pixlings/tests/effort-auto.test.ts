@@ -339,6 +339,72 @@ describe('createAuto', () => {
     }
   })
 
+  test('a level named while the judge is out applies at once, and the verdict that comes back after it is dropped', async () => {
+    for (const answer of [{ effort: 'low', why: 'small' } as Verdict, null]) {
+      const f = fake()
+      const auto = await withPick(f, 'medium')
+      let reply: (v: Verdict | null) => void = () => undefined
+      f.verdicts.push(new Promise<Verdict | null>(resolve => (reply = resolve)))
+      const judged = auto.onPrompt(facts())
+      await auto.onPrompt(facts({ text: 'use max effort' }))
+      expect(auto.view().pick).toEqual({ effort: 'max', why: 'you asked for it', by: 'named' })
+      expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'medium' })).toBe('max')
+      reply(answer)
+      await judged
+      expect(auto.view().pick).toEqual({ effort: 'max', why: 'you asked for it', by: 'named' })
+      expect(auto.view().isAuto).toBe(true)
+      expect(f.toasts).toEqual([])
+      expect(f.asked).toHaveLength(1)
+    }
+  })
+
+  test('Haiku not answering a message typed mid-turn leaves the running turn at its level, and medium follows when it ends', async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = await withPick(f, 'xhigh')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('xhigh')
+    await auto.onPrompt(facts({ text: 'also rename the helper', midTurn: true }))
+    // Auto is off at once, for this session only, and the person is told.
+    expect(auto.view().isAuto).toBe(false)
+    expect(f.state.isAuto).toBe(false)
+    expect(f.sets.filter(([k]) => k === 'effortAuto')).toEqual([])
+    expect(f.toasts).toEqual(["Auto effort is off: Haiku didn't answer. Click A in the effort gate or in /pixling room to try again."])
+    // The running turn's remaining steps and its subagents keep xhigh.
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('xhigh')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium', agentId: 'a1' })).toBe('xhigh')
+    expect(auto.nextEffort(opus)).toBe('xhigh')
+    await auto.onTurnEnd()
+    expect(auto.view().pick).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+    expect(f.state.pick).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('medium')
+    expect(auto.view().isAuto).toBe(false)
+  })
+
+  test('Haiku not answering mid-turn while the turn runs at medium or below sets medium at once', async () => {
+    for (const running of ['low', 'medium'] as const) {
+      const f = fake()
+      const auto = await withPick(f, running)
+      await auto.onPrompt(facts({ text: 'also rename the helper', midTurn: true }))
+      expect(auto.view().pick, running).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+      expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'medium' }), running).toBe('medium')
+    }
+  })
+
+  test('after a mid-turn failure, a level the person picks or Auto turned back on stands when the turn ends', async () => {
+    const picked = await withPick(fake(), 'xhigh')
+    await picked.onPrompt(facts({ text: 'also rename the helper', midTurn: true }))
+    await picked.pickLevel('high')
+    await picked.onTurnEnd()
+    expect(picked.view().pick).toEqual({ effort: 'high', why: 'your pick', by: 'manual' })
+
+    const back = await withPick(fake(), 'xhigh')
+    await back.onPrompt(facts({ text: 'also rename the helper', midTurn: true }))
+    await back.toggleAuto()
+    await back.onTurnEnd()
+    expect(back.view().isAuto).toBe(true)
+    expect(back.view().pick).toEqual({ effort: 'xhigh', why: 'judged', by: 'haiku' })
+  })
+
   test('a throwing dependency never throws into the turn', async () => {
     const f = fake()
     const auto = createAuto({

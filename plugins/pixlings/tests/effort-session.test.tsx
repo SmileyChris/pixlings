@@ -190,8 +190,8 @@ describe('Auto effort in a session', () => {
     expect(asked).toHaveLength(1)
     await step($, 'claude-opus-5-5', 'high')
     expect(reached.map(r => r.effort)).toEqual(['medium'])
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]).toContain("Haiku didn't answer")
+    // Where to click to hand it back: the gate in the band, or the room's on a surface with no band.
+    expect(toasts).toEqual(["Auto effort is off: Haiku didn't answer. Click A in the effort gate or in /pixling room to try again."])
     expect(filled).toEqual([])
   })
 
@@ -234,6 +234,20 @@ describe('Auto effort in a session', () => {
     await endTurn($)
     await step($, 'claude-opus-5-5', 'medium', { turnId: 't2', index: 0 })
     expect(reached.map(r => r.effort)).toEqual(['high', 'high', 'low'])
+  })
+
+  test('Haiku not answering a message typed mid-turn keeps the turn at its level till it ends, then medium', async ($, on) => {
+    const { reached, toasts } = host(on, { replies: ['xhigh', null] })
+    await $.session.start(START)
+    await say($, 'rebuild the whole build pipeline')
+    await step($, 'claude-opus-5-5', 'medium')
+    await say($, 'also rename the helper file', { turnId: 't' })
+    expect(toasts).toHaveLength(1)
+    await step($, 'claude-opus-5-5', 'medium', { index: 1 })
+    await step($, 'claude-opus-5-5', 'low', { agentId: 'sub-1', index: 2 })
+    await endTurn($)
+    await step($, 'claude-opus-5-5', 'medium', { turnId: 't2', index: 0 })
+    expect(reached.map(r => r.effort)).toEqual(['xhigh', 'xhigh', 'xhigh', 'medium'])
   })
 
   test('a higher verdict for a message typed mid-turn applies at once', async ($, on) => {

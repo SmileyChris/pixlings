@@ -20,6 +20,7 @@ type Chosen = NonNullable<PixlingsEffortPick>
 /** Where Haiku not answering leaves the session: medium, as if picked, so it is enforced with Auto off. */
 const NO_ANSWER: Chosen = { effort: 'medium', why: "Haiku didn't answer", by: 'manual' }
 
+const NOT_ANSWERED = "Auto effort is off: Haiku didn't answer. Click A in the effort gate or in /pixling room to try again."
 const STOOD_DOWN = "Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."
 
 export type AutoConfig = { isOn: boolean; floor: Effort; ceiling: Effort; bias: number }
@@ -118,6 +119,11 @@ export function createAuto(deps: AutoDeps) {
   let isJudging = false
   // A lower level for a message typed mid-turn waits for the turn to end (Effortless heldPick).
   let heldPick: Chosen | null = null
+  // Haiku didn't answer a message typed mid-turn while the turn ran above medium. Medium waits for the turn to end, as a
+  // lower verdict does, and the turn runs on at its level till then, though Auto is already off.
+  let isNoAnswerHeld = false
+  // Counts the levels the person picks, names or sets in the app: a verdict asked for before the last of them is stale.
+  let choices = 0
   // The app's own effort as last seen on a main-loop request (Effortless engineEffort). A request reports the app's
   // setting, never the effort Pixlings rewrote it to, so a change is the person's: their pick wins and Auto goes off.
   let engineEffort: Effort | undefined
@@ -174,16 +180,21 @@ export function createAuto(deps: AutoDeps) {
 
   /** The person changed effort in the app: Auto goes off, their level is the pick, and they are told. */
   const pickedInApp = (level: Effort) => {
+    choices += 1
     isAuto = false
+    isNoAnswerHeld = false
     void keepAuto(false)
     void choose({ effort: level, why: 'your pick in the app', by: 'manual' }, { isAuto: false })
     void quiet(() => deps.toast(`Auto effort is off. You picked ${LABELS[level]}; turn Auto on to hand it back.`))
   }
 
-  /** The pick this request should carry: none on other models, none for an Auto pick while Auto is off, none while Effortless steers. */
+  /**
+   * The pick this request should carry: none on other models, none while Effortless steers, and none for an Auto pick
+   * while Auto is off, unless the turn it runs is finishing at it after Haiku didn't answer.
+   */
   const enforced = (modelId: string): Chosen | undefined => {
     if (isStoodDown || !pick || !cacheSafe(modelId)) return undefined
-    return pick.by === 'manual' || isAuto ? pick : undefined
+    return pick.by === 'manual' || isAuto || isNoAnswerHeld ? pick : undefined
   }
 
   /**
@@ -265,8 +276,7 @@ export function createAuto(deps: AutoDeps) {
 
     /** Decides the prompt's level before it goes out; the prompt itself is never changed or held back. */
     async onPrompt(f: PromptFacts): Promise<void> {
-      // A prompt sent while the judge is still out keeps the level instead of asking again.
-      if (!cfg.isOn || isStoodDown || isJudging) return
+      if (!cfg.isOn || isStoodDown) return
       let plan: PromptPlan
       try {
         plan = planPrompt(f, isAuto, pick)
@@ -274,8 +284,14 @@ export function createAuto(deps: AutoDeps) {
         return
       }
       const midTurn = f.midTurn && pick !== null
-      if (plan.kind === 'named') return apply({ effort: plan.effort, why: 'you asked for it', by: 'named' }, midTurn)
-      if (plan.kind !== 'judge') return
+      // A level the person names applies even while the judge is out, and the verdict that comes back after it is dropped.
+      if (plan.kind === 'named') {
+        choices += 1
+        return apply({ effort: plan.effort, why: 'you asked for it', by: 'named' }, midTurn)
+      }
+      // A prompt sent while the judge is still out keeps the level instead of asking again.
+      if (plan.kind !== 'judge' || isJudging) return
+      const asked = choices
       isJudging = true
       let verdict: Verdict | null = null
       try {
@@ -285,21 +301,34 @@ export function createAuto(deps: AutoDeps) {
       } finally {
         isJudging = false
       }
-      // The person turned Auto off or picked a level while the judge was out: their choice stands.
-      if (!isAuto) return
+      // The person turned Auto off, or picked or named a level, while the judge was out: their choice stands.
+      if (!isAuto || choices !== asked) return
       if (verdict && isEffort(verdict.effort)) return apply({ ...settle(verdict, cfg), by: 'haiku' }, midTurn)
       // No answer: medium, enforced as a pick, and Auto off for this session only. The store keeps the person's switch.
       heldPick = null
       isAuto = false
-      await choose(NO_ANSWER, { isAuto: false })
-      await quiet(() => deps.toast("Auto effort is off: Haiku didn't answer. Click A to try again."))
+      if (midTurn && pick && rank(pick.effort) > rank(NO_ANSWER.effort)) {
+        // Medium now would cut the running task's remaining steps: it waits for the turn to end.
+        isNoAnswerHeld = true
+        await quiet(() => deps.setState({ isAuto: false }))
+      } else {
+        await choose(NO_ANSWER, { isAuto: false })
+      }
+      await quiet(() => deps.toast(NOT_ANSWERED))
     },
 
-    /** The turn ended: a lower level held for a message typed during it takes over, if Auto is still on. */
+    /**
+     * The turn ended: what waited for it takes over. A lower level held for a message typed during it, if Auto is still
+     * on; medium, if Haiku didn't answer one and Auto is still off.
+     */
     async onTurnEnd(): Promise<void> {
       const held = heldPick
+      const isNoAnswer = isNoAnswerHeld
       heldPick = null
-      if (held && isAuto && cfg.isOn) await choose(held)
+      isNoAnswerHeld = false
+      if (!cfg.isOn) return
+      if (isNoAnswer && !isAuto) return choose(NO_ANSWER, { isAuto: false })
+      if (held && isAuto) await choose(held)
     },
 
     /** The effort a request should carry, or undefined to send it as the app made it. */
@@ -328,7 +357,9 @@ export function createAuto(deps: AutoDeps) {
     /** The person picked a level: Auto goes off, the requests follow at once, and `/effort` is typed for the app. */
     async pickLevel(level: Effort): Promise<void> {
       if (!isEffort(level)) return
+      choices += 1
       isAuto = false
+      isNoAnswerHeld = false
       await Promise.all([keepAuto(false), choose({ effort: level, why: 'your pick', by: 'manual' }, { isAuto: false })])
       await quiet(() => deps.typeEffort(level))
     },
@@ -349,6 +380,7 @@ export function createAuto(deps: AutoDeps) {
       if (isStoodDown) return
       isStoodDown = true
       heldPick = null
+      isNoAnswerHeld = false
       void quiet(() => deps.toast(STOOD_DOWN))
     },
 
