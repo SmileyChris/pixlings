@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { BADGES } from '../hooks/lib/badges.ts'
+import { BADGES, tierKey } from '../hooks/lib/badges.ts'
 import type { Badge } from '../hooks/lib/badges.ts'
 import { TRANSPARENT } from '../hooks/lib/canvas.ts'
+import { CARD_W, renderCard, shareText } from '../hooks/lib/card.ts'
+import { hatchPixling } from '../hooks/lib/progress.ts'
+import type { Pixling } from '../hooks/lib/progress.ts'
 import { toCells } from '../hooks/lib/raster.ts'
 import { cardIcon, drawCard, shelfFits } from '../hooks/lib/room.ts'
 import type { CardModel, RoomKit } from '../hooks/lib/room.ts'
@@ -108,5 +111,45 @@ describe('the hover card icons', () => {
     const svgs = nodes(tree).filter(n => n.type === 'Svg')
     expect(svgs.map(n => n.props['alt'])).toEqual(['Streak', 'Hello, World', 'Green Thumb'])
     expect(svgs.every(n => String(n.props['source']).startsWith('<svg'))).toBe(true)
+  })
+})
+
+describe('the share card row', () => {
+  const seeded = (seed: number) => () => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31
+    return seed / 2 ** 31
+  }
+  const T0 = Date.parse('2026-10-03T12:00:00Z')
+  const withTiers = (tiers: Record<string, number>): Pixling => {
+    const badges: Record<string, number> = {}
+    for (const b of BADGES) for (let t = 1; t <= (tiers[b.id] ?? 0); t++) badges[tierKey(b.id, t)] = T0
+    return { ...hatchPixling(seeded(1), T0), badges }
+  }
+  const allGold = () => withTiers(Object.fromEntries(BADGES.map(b => [b.id, b.steps.length])))
+  const at = (p: { w: number; px: Int32Array }, x: number, y: number) => p.px[y * p.w + x]
+
+  test('eighteen icons fit the column, above the divider', () => {
+    const card = renderCard(allGold(), T0)
+    for (let y = 90; y <= 100; y++) {
+      // Between the picture's panel and the inner frame at x 236.
+      for (let x = 86; x < CARD_W - 4; x++) {
+        const c = at(card, x, y)
+        if (c === undefined || SHARE.includes(c)) continue
+        expect(x >= 88 && x < 232 && y >= 91 && y < 100, `pixel at ${x},${y}`).toBe(true)
+      }
+    }
+  })
+
+  test('pips show the tier', () => {
+    const card = renderCard(withTiers({ hello: 1, exterminator: 2 }), T0)
+    const x = 88 + 8
+    expect(at(card, x + 1, 99)).toBe(0xc0c8d4)
+    expect(at(card, x + 3, 99)).toBe(0xc0c8d4)
+    expect(at(card, x + 5, 99)).toBe(0x2c2f45)
+    expect(SHARE).toContain(at(card, 89, 99))
+  })
+
+  test('the post counts badges, not tiers', () => {
+    expect(shareText(allGold())).toContain('18/18 badges')
   })
 })

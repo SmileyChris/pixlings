@@ -1,7 +1,7 @@
 // The share card: a trading card of the pixling, drawn at 240×135 and saved five times larger,
 // 1200×675, the size a link preview shows whole.
 
-import { BADGES } from './badges.ts'
+import { BADGES, earnedBadges, isTiered, tierOf } from './badges.ts'
 import { blank, renderFrame, stamp, TRANSPARENT } from './canvas.ts'
 import type { Pixels } from './canvas.ts'
 import { print, printSpans, spansWidth, textWidth } from './font.ts'
@@ -22,6 +22,9 @@ const INK = 0xe8ecf4
 const DIM = 0x7a819c
 const FAINT = 0x2c2f45
 const GOLD = 0xffe14d
+/** Bronze, silver and gold, for the pips under a tiered badge. */
+const TIER_COLORS = [0xb06a2c, 0xc0c8d4, 0xffc53d]
+const BADGE_PITCH = 8
 
 export const REPO = 'github.com/cglremrcn/pixlings'
 
@@ -157,10 +160,15 @@ export const renderCard = (px: Pixling, now: number, t = 600): Pixels => {
     for (let x = end + 1; x < valueX - 3; x += 3) p.px[(y + 6) * p.w + x] = FAINT
   })
 
+  // Eighteen icons 8 pixels apart fill the column; under a tiered one, three pips, lit to its tier.
   BADGES.forEach((b, i) => {
-    const isEarned = px.badges[b.id] !== undefined
-    const colors = isEarned ? b.colors : Object.fromEntries(Object.keys(b.colors).map(k => [k, FAINT]))
-    stamp(p, col + i * 9, 91, b.icon, colors)
+    const tier = tierOf(b, px)
+    const x = col + i * BADGE_PITCH
+    const colors = tier > 0 ? b.colors : Object.fromEntries(Object.keys(b.colors).map(k => [k, FAINT]))
+    stamp(p, x, 91, b.icon, colors)
+    if (isTiered(b)) {
+      for (let k = 0; k < b.steps.length; k++) fill(p, x + 1 + k * 2, 99, 1, 1, k < tier ? (TIER_COLORS[tier - 1] ?? FAINT) : FAINT)
+    }
   })
 
   // Divider, the quote and the footer.
@@ -180,7 +188,7 @@ export const shareText = (px: Pixling): string => {
   const shiny = px.isShiny ? 'SHINY ' : ''
   const [top] = topTics(px.tics, 1)
   const heard = top ? ` Claude has said ${top.label} ${top.n}× in front of it.` : ''
-  const badges = Object.keys(px.badges).length
+  const badges = earnedBadges(px).length
   return (
     `Meet ${px.name}, my Lv ${level} ${shiny}${rarity} ${species?.name.toLowerCase() ?? 'pixling'} in Claude Code. ` +
     `${count(px.stats.turns, 'turn')}, ${count(px.stats.bugsSquashed, 'bug')} squashed, ${badges}/${BADGES.length} badges.${heard}` +
