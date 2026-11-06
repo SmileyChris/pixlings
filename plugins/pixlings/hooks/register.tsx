@@ -349,6 +349,15 @@ async function typedSkill($: EngineInterface, text: string): Promise<{ name: str
   return { name, description: found.description ?? '' }
 }
 
+/** Whether Effortless is installed: the app lists a command of its plugin. Not when the list cannot be read. */
+async function hasEffortless($: EngineInterface): Promise<boolean> {
+  try {
+    return (await $.command.list()).some(c => c.plugin === 'effortless')
+  } catch {
+    return false
+  }
+}
+
 /** Auto effort looks at the prompt before it goes on, and never changes or holds it back (a judge that fails costs at most its own timeout). */
 async function judgePrompt($: EngineInterface, e: PromptSubmitInput, auto: Auto): Promise<void> {
   try {
@@ -1400,7 +1409,10 @@ export const register: Register = (on, options) => {
   let relievedAt: number | null = null
   let hasSweated = false
   let contextWindow: number | null = null
-  /** turn.step's `model` and `effort` on the main loop (index.d.ts TurnStepInput). */
+  /**
+   * turn.step's `model` and `effort` on the main loop (index.d.ts TurnStepInput). Until a request names it, the model
+   * is the session's as `session.start` read it, so the effort gate has a model to read its level for after a reload.
+   */
   let model: string | undefined
   let effort: string | number | undefined
   /** The rate-limit windows as a main turn began, and what the last one took from them. */
@@ -1550,6 +1562,11 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     folder = folderOf(e.cwd)
+    // A reload has lost the main loop's model, which its next request names again: till then the session's stands in.
+    if (model === undefined) {
+      const named = await $.session.model().catch(() => undefined)
+      if (model === undefined && typeof named === 'string' && named !== '') model = named
+    }
     // Auto steers only once it has read its saved state: a reload runs this hook unawaited, and until then `auto` is null,
     // so a prompt or a request passes through rather than meeting a controller that thinks Auto is on with no pick.
     try {
@@ -1580,6 +1597,8 @@ export const register: Register = (on, options) => {
         cfg: autoConfig,
       })
       await local.load().catch(() => undefined)
+      // Effortless, loaded outside Pixlings, sets each request's effort before Pixlings sees it: Auto stands down.
+      if (await hasEffortless($)) local.standDown()
       auto = local
     } catch {
       // Auto effort never takes the session start down with it.

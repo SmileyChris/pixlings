@@ -664,3 +664,61 @@ describe('reason: what the gate says after `auto:`', () => {
     expect(auto.reason(opus)).toBe('big refactor')
   })
 })
+
+describe('standing down while Effortless is installed', () => {
+  const opus = 'claude-opus-5-5'
+  const PAUSED = "Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."
+
+  test('no judging and no steering, told once however often it stands down', async () => {
+    const f = fake({ verdicts: [{ effort: 'max', why: 'huge job' }] })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    auto.standDown()
+    auto.standDown()
+    await auto.onPrompt(facts())
+    await auto.onPrompt(facts({ text: 'max effort please' }))
+    expect(f.asked).toHaveLength(0)
+    expect(auto.view().pick).toBeNull()
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium', agentId: 'a1' })).toBeUndefined()
+    expect(f.toasts).toEqual([PAUSED])
+  })
+
+  test('a request at another effort is Effortless steering, not the person: Auto stays on and nothing is stored', async () => {
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    auto.standDown()
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: opus, effort: 'max' })).toBeUndefined()
+    await Promise.resolve()
+    expect(auto.view().isAuto).toBe(true)
+    expect(f.sets).toEqual([])
+    expect(f.toasts).toEqual([PAUSED])
+  })
+
+  test('the gate shows the effort the requests last carried, and says why Auto is paused', async () => {
+    const auto = await withPick(fake(), 'high')
+    auto.standDown()
+    auto.requestEffort({ modelId: opus, effort: 'low' })
+    expect(auto.nextEffort(opus)).toBe('low')
+    expect(auto.reason(opus)).toBe('paused: Effortless is installed')
+    expect(auto.reason('claude-fable-5-1')).toBe('paused: Effortless is installed')
+  })
+
+  test('a click does what it shows for this session, and stores nothing', async () => {
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    auto.standDown()
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(false)
+    expect(f.state.isAuto).toBe(false)
+    await auto.pickLevel('high')
+    expect(auto.view().pick).toEqual({ effort: 'high', why: 'your pick', by: 'manual' })
+    // The app's own control is asked to follow; Pixlings still sends nothing of its own.
+    expect(f.typed).toEqual(['high'])
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+    expect(f.sets).toEqual([])
+  })
+})

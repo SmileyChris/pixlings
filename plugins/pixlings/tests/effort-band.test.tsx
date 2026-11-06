@@ -60,6 +60,8 @@ const DUCK = {
 type HostOptions = {
   /** When the session starts; noon UTC unless given. */
   now?: number
+  /** The commands the app lists. */
+  commands?: { name: string; description: string; source: string; plugin?: string }[]
 }
 
 /** The engine beneath the pixling: a judge that answers in turn (medium once the replies run out), a prompt box, toasts, and the model step. */
@@ -75,7 +77,7 @@ const host = (on: On, replies: Reply[] = [], o: HostOptions = {}) => {
   on('session.id', () => ({ value: 's1' }) as never)
   on('session.model', () => ({ value: 'claude-opus-5-5' }) as never)
   on('session.messages', () => ({ value: [] }) as never)
-  on('command.list', () => ({ value: [] }) as never)
+  on('command.list', () => ({ value: o.commands ?? [] }) as never)
   on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('model.complete', ($, e) => {
@@ -236,6 +238,44 @@ describe('the effort gate in the band', () => {
       }
     })
   }
+
+  test('with Effortless installed the gate says Auto is paused for it, at the effort the requests carry', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const effortless = { name: 'effortless', description: 'effortless: settings', source: 'plugin', plugin: 'effortless' }
+    const { clock, asked, toasts } = host(on, ['max'], { commands: [effortless] })
+    await $.session.start(START)
+    await clock.advance(3000)
+    // Effortless sent this request at xhigh; Pixlings judges nothing and leaves it so.
+    await ask($, 'refactor the auth module', 'xhigh')
+    expect(asked).toEqual([])
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await isAutoLit(ui), surface).toBe(true)
+      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  auto: "paused: Effortless is installed"')
+      await ui.unmount()
+    }
+    expect(toasts.filter(t => t.includes('Effortless'))).toEqual(["Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."])
+  })
+
+  test('after a reload the gate shows the level in force before the next request', { options: { band: 'full', roam: false } }, async ($, on) => {
+    const { clock } = host(on)
+    // The engine's state outlives the module's reload: Auto on, and the level it chose before.
+    const kept = new Map<string, unknown>([
+      ['pixlings/effortAuto', true],
+      ['pixlings/effortPick', { effort: 'high', why: 'multi-file refactor', by: 'haiku' }],
+    ])
+    on('state.get', ($, e) => ({ value: { value: kept.get(`${e.plugin}/${e.key}`), version: 1 } }) as never)
+    on('state.set', ($, e) => {
+      kept.set(`${e.plugin}/${e.key}`, e.value)
+      return { value: { isSet: true, version: 2 } } as never
+    })
+    await $.session.start(START)
+    await clock.advance(3000)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...BAND, surface })
+      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+      await ui.unmount()
+    }
+  })
 
   test('after Haiku did not answer, pressing A lights it and gives no reason until Haiku judges again', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock, toasts } = host(on, [null])

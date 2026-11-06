@@ -21,7 +21,8 @@ type HostOptions = {
   replies?: (Effort | Error | null)[]
   /** The model the session runs on. */
   model?: string
-  commands?: Command[]
+  /** The commands the app lists; an Error is thrown instead. */
+  commands?: Command[] | Error
   /** The draft in the prompt box. */
   draft?: string
   /** Holds every store read until it settles, so a test can act while a session start is still reading its save. */
@@ -36,7 +37,10 @@ const host = (on: On, o: HostOptions = {}) => {
     await o.holdStore
     return { value: db.get(e.key) } as never
   })
+  /** Every key written to the store, in order. */
+  const writes: string[] = []
   on('store.set', ($, e) => {
+    writes.push(e.key)
     db.set(e.key, JSON.parse(JSON.stringify(e.value)))
     return { value: undefined } as never
   })
@@ -49,7 +53,10 @@ const host = (on: On, o: HostOptions = {}) => {
   on('session.id', () => ({ value: 's1' }) as never)
   on('session.model', () => ({ value: o.model ?? 'claude-opus-5-5' }) as never)
   on('session.messages', () => ({ value: [] }) as never)
-  on('command.list', () => ({ value: o.commands ?? [] }) as never)
+  on('command.list', () => {
+    if (o.commands instanceof Error) throw o.commands
+    return { value: o.commands ?? [] } as never
+  })
   on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('fs.read', ($, e) => ({ deny: `ENOENT: no such file or directory, open '${e.path}'` }) as never)
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -92,7 +99,7 @@ const host = (on: On, o: HostOptions = {}) => {
       usage: { input_tokens: 20, output_tokens: 40, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'test' },
     }
   })
-  return { clock, asked, toasts, filled, reached }
+  return { clock, asked, toasts, filled, reached, writes }
 }
 
 /** The person types a prompt (mid-turn when `turnId` is given). */
@@ -108,6 +115,9 @@ const step = async ($: Engine, model: string, effort: Effort | undefined, extra:
   }
   await stream.result
 }
+
+/** Effortless's own command, as the app lists it while Effortless is installed. */
+const EFFORTLESS: Command = { name: 'effortless', description: 'effortless: settings, debug, handoff, setup, bench, auto, stats.', source: 'plugin', plugin: 'effortless' }
 
 const endTurn = async ($: Engine): Promise<void> => {
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 't', reason: 'answer' })
@@ -248,6 +258,30 @@ describe('Auto effort in a session', () => {
     expect(toasts[0]).toContain('Auto effort is off')
     await say($, 'now rebuild the whole thing')
     expect(asked).toHaveLength(1)
+  })
+
+  test('with Effortless installed Auto stands down: no judging, no steering, nothing stored, and one toast', async ($, on) => {
+    const { asked, reached, toasts, writes } = host(on, { replies: ['max'], commands: [EFFORTLESS] })
+    await $.session.start(START)
+    await say($, 'refactor the auth module')
+    expect(asked).toEqual([])
+    // Effortless steers from outside Pixlings: its levels reach Pixlings' requests as the app's, and are not the person's.
+    await step($, 'claude-opus-5-5', 'high')
+    await step($, 'claude-opus-5-5', 'low', { index: 1 })
+    await say($, 'now rebuild the whole thing')
+    expect(asked).toEqual([])
+    expect(reached.map(r => r.effort)).toEqual(['high', 'low'])
+    expect(writes.filter(key => key === 'effortAuto' || key === 'effortPick')).toEqual([])
+    expect(toasts).toEqual(["Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."])
+  })
+
+  test('a command list that cannot be read is no Effortless', async ($, on) => {
+    const { asked, reached } = host(on, { replies: ['high'], commands: new Error('no list') })
+    await $.session.start(START)
+    await say($, 'refactor the auth module')
+    await step($, 'claude-opus-5-5', 'medium')
+    expect(asked).toHaveLength(1)
+    expect(reached.map(r => r.effort)).toEqual(['high'])
   })
 
   test('a hook reload in a session Haiku failed in keeps Auto off at medium, whatever the store says', async ($, on) => {

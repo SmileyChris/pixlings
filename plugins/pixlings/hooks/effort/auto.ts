@@ -20,6 +20,8 @@ type Chosen = NonNullable<PixlingsEffortPick>
 /** Where Haiku not answering leaves the session: medium, as if picked, so it is enforced with Auto off. */
 const NO_ANSWER: Chosen = { effort: 'medium', why: "Haiku didn't answer", by: 'manual' }
 
+const STOOD_DOWN = "Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."
+
 export type AutoConfig = { isOn: boolean; floor: Effort; ceiling: Effort; bias: number }
 
 const isEffort = (v: unknown): v is Effort => EFFORTS.includes(v as Effort)
@@ -122,6 +124,8 @@ export function createAuto(deps: AutoDeps) {
   let model: ModelKey | undefined
   // The pick came from the store, not this session: the app's effort, which the person may have just set, overrules it.
   let pickCarried = false
+  // Effortless is installed and steers effort itself: Auto judges, steers and stores nothing this session (standDown).
+  let isStoodDown = false
 
   const quiet = async (run: () => unknown): Promise<void> => {
     try {
@@ -144,7 +148,9 @@ export function createAuto(deps: AutoDeps) {
       return undefined
     }
   }
-  const keepAuto = (on: boolean) => quiet(() => deps.store.set('effortAuto', on))
+  /** Auto's switch and the pick carry to the next session in the store, but not from a session where Effortless steers. */
+  const keep = (key: 'effortAuto' | 'effortPick', value: unknown): Promise<void> => (isStoodDown ? Promise.resolve() : quiet(() => deps.store.set(key, value)))
+  const keepAuto = (on: boolean) => keep('effortAuto', on)
 
   /** The pick in force from now on. A change of level Auto made is drawn as a shift for a moment (Effortless choose). */
   const choose = async (next: Chosen, also: { isAuto?: boolean } = {}) => {
@@ -153,7 +159,7 @@ export function createAuto(deps: AutoDeps) {
     pick = next
     const moved = next.by !== 'manual' && before !== null && before.effort !== next.effort
     if (moved) shift = { from: before.effort, to: next.effort, until: now() + SWITCHED_MS }
-    await Promise.all([quiet(() => deps.setState({ ...also, pick: next, ...(moved ? { shift } : {}) })), quiet(() => deps.store.set('effortPick', next))])
+    await Promise.all([quiet(() => deps.setState({ ...also, pick: next, ...(moved ? { shift } : {}) })), keep('effortPick', next)])
   }
 
   /** Mid-turn, a lower level would cut the running task's remaining steps, so it waits; a higher one helps, so it applies. */
@@ -174,9 +180,9 @@ export function createAuto(deps: AutoDeps) {
     void quiet(() => deps.toast(`Auto effort is off. You picked ${LABELS[level]}; turn Auto on to hand it back.`))
   }
 
-  /** The pick this request should carry: none on other models, and none for an Auto pick while Auto is off. */
+  /** The pick this request should carry: none on other models, none for an Auto pick while Auto is off, none while Effortless steers. */
   const enforced = (modelId: string): Chosen | undefined => {
-    if (!pick || !cacheSafe(modelId)) return undefined
+    if (isStoodDown || !pick || !cacheSafe(modelId)) return undefined
     return pick.by === 'manual' || isAuto ? pick : undefined
   }
 
@@ -217,8 +223,9 @@ export function createAuto(deps: AutoDeps) {
       engineEffort = seen
       // A new session with Auto off starts from the carried pick, but the level the app is on now is the person's.
       const takesApp = isFirst && pickCarried && !isAuto && pick?.effort !== seen
-      // The request goes out at the person's level, which is the app's own.
-      if (isByPerson || takesApp) {
+      // The request goes out at the person's level, which is the app's own. Where Effortless steers, the level a
+      // request comes at is its own, not the person's: nothing to give way to.
+      if (!isStoodDown && (isByPerson || takesApp)) {
         pickedInApp(seen)
         return seen
       }
@@ -259,7 +266,7 @@ export function createAuto(deps: AutoDeps) {
     /** Decides the prompt's level before it goes out; the prompt itself is never changed or held back. */
     async onPrompt(f: PromptFacts): Promise<void> {
       // A prompt sent while the judge is still out keeps the level instead of asking again.
-      if (!cfg.isOn || isJudging) return
+      if (!cfg.isOn || isStoodDown || isJudging) return
       let plan: PromptPlan
       try {
         plan = planPrompt(f, isAuto, pick)
@@ -334,11 +341,24 @@ export function createAuto(deps: AutoDeps) {
     },
 
     /**
-     * What the gate says after `auto:`, which it shows only while Auto is on. On a model Auto does not steer, that it is
-     * paused there; else the reason for the level Auto chose or was told. A level the person picked, or Haiku not
-     * answering, gives none: Auto is not the one choosing until Haiku next judges.
+     * Effortless is installed. It steers effort from outside Pixlings, so a request reaches Pixlings at its level, not
+     * the app's: Auto would take each of its shifts for the person's, turn itself off for good, and both would judge
+     * every prompt. So for this session Auto judges, steers and stores nothing, and says so once.
+     */
+    standDown(): void {
+      if (isStoodDown) return
+      isStoodDown = true
+      heldPick = null
+      void quiet(() => deps.toast(STOOD_DOWN))
+    },
+
+    /**
+     * What the gate says after `auto:`, which it shows only while Auto is on. While Effortless steers, or on a model
+     * Auto does not steer, that Auto is paused; else the reason for the level Auto chose or was told. A level the person
+     * picked, or Haiku not answering, gives none: Auto is not the one choosing until Haiku next judges.
      */
     reason(modelId: string | undefined): string {
+      if (isStoodDown) return 'paused: Effortless is installed'
       if (modelId !== undefined && !cacheSafe(modelId)) return 'paused on this model'
       return pick && pick.by !== 'manual' ? pick.why : ''
     },
