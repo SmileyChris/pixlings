@@ -364,6 +364,11 @@ describe('the band', () => {
     expect(toasts.filter(t => t.includes('Exterminator')).length).toBe(1)
     const list = await $.command.run({ command: 'pixling', args: 'badges' } as never)
     expect(list.text).toMatch(/Badges 2\/18/)
+    // Columns line up: past the leading icon, every row's bar and description start at the same place.
+    const rows = list.text.split('\n').slice(1).map(l => l.replace(/^\S+ /, ''))
+    const at = (l: string, re: RegExp): number => l.search(re)
+    expect(new Set(rows.map(l => at(l, /[█░]|earned/))).size).toBe(1)
+    expect(new Set(rows.map(l => at(l, /\s{2}[A-Z][a-z]+ [^/]*$/))).size).toBe(1)
   })
 
   test('/pixling share saves a PNG through a process and copies a post', async ($, on) => {

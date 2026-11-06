@@ -2140,13 +2140,23 @@ export const register: Register = (on, options) => {
       .replace(/[^\p{L}\p{N}]+/gu, '-')
       .replace(/^-+|-+$/g, '') || 'pixling'
 
-  const badgeLine = (b: (typeof BADGES)[number], p: Pixling): string => {
-    const tier = tierOf(b, p)
-    const medal = medalOf(b, tier)
-    const next = progressOf(b, p)
-    const state = next ? `${medal ? `${medal} ` : ''}${xpBar(next.have, next.need, 10)} ${next.have}/${next.need}` : `${medal ? `${medal} ` : ''}earned`
-    const how = b.how(next ? next.need : (b.steps[b.steps.length - 1] ?? 1))
-    return `${tier > 0 ? b.emoji : '🔒'} ${b.name.padEnd(19)} ${state.padEnd(18)} ${how}`
+  /** The badge list as columns: icon, name, medal (blank when none), bar or "earned", count, what it asks. */
+  const badgeLines = (p: Pixling): string[] => {
+    const rows = BADGES.map(b => {
+      const tier = tierOf(b, p)
+      const next = progressOf(b, p)
+      return {
+        icon: tier > 0 ? b.emoji : '🔒',
+        name: b.name,
+        medal: medalOf(b, tier) || '  ',
+        bar: next ? xpBar(next.have, next.need, 10) : 'earned',
+        count: next ? `${next.have.toLocaleString('en-US')}/${next.need.toLocaleString('en-US')}` : '',
+        how: b.how(next ? next.need : (b.steps[b.steps.length - 1] ?? 1)),
+      }
+    })
+    const nameW = Math.max(...rows.map(r => r.name.length))
+    const countW = Math.max(...rows.map(r => r.count.length))
+    return rows.map(r => `${r.icon} ${r.name.padEnd(nameW)}  ${r.medal} ${r.bar.padEnd(10)} ${r.count.padStart(countW)}  ${r.how}`)
   }
 
   /** The text card: who it is, its personality, whose Buddy it was, what its quips cost. */
@@ -2219,7 +2229,7 @@ export const register: Register = (on, options) => {
         return { text: await openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name) }
       case 'badges': {
         const p = pixling
-        return { text: [`Badges ${earnedBadges(p).length}/${BADGES.length}`, ...BADGES.map(b => badgeLine(b, p))].join('\n') }
+        return { text: [`Badges ${earnedBadges(p).length}/${BADGES.length}`, ...badgeLines(p)].join('\n') }
       }
       case 'share': {
         const p = pixling
