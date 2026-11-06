@@ -123,7 +123,7 @@ export const BADGES: readonly Badge[] = [
     id: 'lucky',
     name: 'Lucky',
     emoji: '✨',
-    how: 'Hatch a shiny (1 in 64)',
+    how: 'Hatch a shiny',
     progress: p => at(p.isShiny ? 1 : 0, 1),
     icon: ['...Y...', '...Y...', '..YYY..', 'YYYWYYY', '..YYY..', '...Y...', '...Y...'],
     colors: { Y: 0xffe14d, W: 0xffffff },

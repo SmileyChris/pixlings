@@ -18,7 +18,7 @@ import { BADGES, earnedBadges, localDate } from './badges.ts'
 import type { Badge } from './badges.ts'
 import { blank, renderFrame, renderSilhouette, stamp, TRANSPARENT } from './canvas.ts'
 import type { Pixels } from './canvas.ts'
-import { daysTogether, friendshipOf, levelOf, petWait, xpBar } from './progress.ts'
+import { daysTogether, friendshipOf, levelOf, petWait, shinyEggOf, xpBar } from './progress.ts'
 import type { Pixling } from './progress.ts'
 import { rasterOf, toSvg } from './raster.ts'
 import { RARITY_COLOR, RARITY_STARS, SPECIES, speciesById } from './sprites.ts'
@@ -424,6 +424,7 @@ const home = (kit: RoomKit, seat: Seat, m: RoomModel, p: Pixling, act: RoomActio
   const color = hex(RARITY_COLOR[s.rarity])
   const { level, into, need } = levelOf(p.xp)
   const friend = friendshipOf(p.stats.pets)
+  const shinyEgg = shinyEggOf(p)
   const cardWidth = seat.isSideBySide ? seat.columns - seat.spriteColumns - 2 : seat.columns
   const sprite = picture(kit, m.frame, seat.scale, ROOM_SPRITE_KEY, `${p.name} the ${s.name}`)
   const card = Box({
@@ -451,6 +452,7 @@ const home = (kit: RoomKit, seat: Seat, m: RoomModel, p: Pixling, act: RoomActio
         flexWrap: 'wrap',
         children: [Text({ color: '#ff4d8d', children: friend.hearts }), Text({ dimColor: true, children: ` ${friend.name}` })],
       }),
+      shinyEgg ? Text({ wrap: 'wrap', color: '#ffc53d', children: `✦ Shiny egg laid at level ${shinyEgg.level}` }) : null,
       Box({
         flexDirection: 'row',
         children: [

@@ -174,11 +174,9 @@ describe('the new species', () => {
     const n = 100_000
     const random = mulberry32(2026)
     const counts: Record<string, number> = {}
-    let shiny = 0
     for (let i = 0; i < n; i++) {
       const r = roll(random)
       counts[r.species.id] = (counts[r.species.id] ?? 0) + 1
-      if (r.isShiny) shiny++
     }
     expect(Object.keys(ODDS).sort()).toEqual(SPECIES.map(s => s.id).sort())
     expect(Math.abs(Object.values(ODDS).reduce((a, b) => a + b, 0) - 100)).toBeLessThan(1e-9)
@@ -191,7 +189,6 @@ describe('the new species', () => {
     // Every tier is rarer per species than the one below it.
     const perTier = ['common', 'uncommon', 'rare', 'epic', 'legendary'].map(r => ODDS[SPECIES.find(s => s.rarity === r)!.id]!)
     for (let i = 1; i < perTier.length; i++) expect(perTier[i]!).toBeLessThan(perTier[i - 1]!)
-    expect(Math.abs(shiny / n - 1 / 64)).toBeLessThan(0.002)
   })
 
   test('the share card fits every name, shiny at level 99', () => {

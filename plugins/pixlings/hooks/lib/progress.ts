@@ -90,7 +90,9 @@ export const emptyStats = (): Stats => ({
 
 export const emptyDay = (date: string): Day => ({ date, turns: 0, commits: 0, squashed: 0, tests: 0, xp: 0 })
 
-export const SHINY_ODDS = 64
+/** Each time its XP passes another SHINY_EGG_XP, this chance it lays a shiny egg: the next hatch is shiny. */
+export const SHINY_EGG_CHANCE = 0.01
+export const SHINY_EGG_XP = 1000
 
 const NAMES = [
   'Mochi', 'Pixel', 'Byte', 'Nibble', 'Biscuit', 'Pip', 'Sprocket', 'Tofu', 'Noodle', 'Waffles',
@@ -100,8 +102,8 @@ const NAMES = [
   'Hex', 'Tux', 'Ping', 'Pong', 'Turbo', 'Wasabi', 'Yuzu', 'Mango', 'Olive', 'Clover',
 ] as const
 
-/** Picks a rarity by weight, then a species of it, then the 1-in-64 shiny roll. */
-export const roll = (random: () => number): { species: Species; isShiny: boolean; name: string } => {
+/** Picks a rarity by weight, then a species of it, then a name. Shininess is not rolled: it hatches from a shiny egg. */
+export const roll = (random: () => number): { species: Species; name: string } => {
   const total = RARITY_ORDER.reduce((sum, r) => sum + RARITY_WEIGHT[r], 0)
   let x = random() * total
   let rarity: Rarity = 'common'
@@ -114,17 +116,16 @@ export const roll = (random: () => number): { species: Species; isShiny: boolean
   }
   const pool = SPECIES.filter(s => s.rarity === rarity)
   const species = pool[Math.floor(random() * pool.length)] ?? SPECIES[0]!
-  const isShiny = random() < 1 / SHINY_ODDS
   const name = NAMES[Math.floor(random() * NAMES.length)] ?? 'Pip'
-  return { species, isShiny, name }
+  return { species, name }
 }
 
 export const hatchPixling = (random: () => number, now: number, dex: readonly string[] = []): Pixling => {
-  const { species, isShiny, name } = roll(random)
+  const { species, name } = roll(random)
   return {
     v: 1,
     species: species.id,
-    isShiny,
+    isShiny: false,
     name,
     hatchedAt: now,
     xp: 0,
@@ -173,6 +174,7 @@ export const nextEgg = (p: Pixling, now: number): Pixling => {
 /** A new egg for the same person: the badges, streak, tics and dex are theirs and stay. */
 export const rehatch = (p: Pixling, random: () => number, now: number): Pixling => ({
   ...hatchPixling(random, now, p.dex),
+  isShiny: shinyEggOf(p) !== null,
   badges: p.badges,
   streak: p.streak,
   tics: p.tics,
@@ -239,15 +241,38 @@ export const gearOf = (p: Pixling): { hat: Hat | null; face: Face | null } => {
 export const gain = (
   p: Pixling,
   event: XpEvent,
-): { pixling: Pixling; levelUp: { level: number; unlocks: Unlock[] } | null } => {
+): { pixling: Pixling; levelUp: { level: number; unlocks: Unlock[] } | null; isShinyEgg: boolean } => {
   const before = levelOf(p.xp).level
   const pixling = { ...p, xp: p.xp + XP[event], day: { ...p.day, xp: p.day.xp + XP[event] } }
   const after = levelOf(pixling.xp).level
-  if (after <= before) return { pixling, levelUp: null }
+  // Laid by now and not before: this gain crossed the step it came at.
+  const isShinyEgg = shinyEggOf(p) === null && shinyEggOf(pixling) !== null
+  if (after <= before) return { pixling, levelUp: null, isShinyEgg }
   return {
     pixling,
     levelUp: { level: after, unlocks: UNLOCKS.filter(u => u.level > before && u.level <= after) },
+    isShinyEgg,
   }
+}
+
+/** A roll in [0, 1) fixed by the egg and a step: every session and every replay agree. */
+const rollAt = (hatchedAt: number, step: number, salt: number): number => {
+  let x = Math.imul((hatchedAt % 0x7fffffff) ^ Math.imul(step, 0x9e3779b1) ^ salt, 0x85ebca6b)
+  x ^= x >>> 13
+  x = Math.imul(x, 0xc2b2ae35)
+  x ^= x >>> 16
+  return (x >>> 0) / 0x100000000
+}
+
+/**
+ * The shiny egg it has laid by now, or null: each time its XP passes another SHINY_EGG_XP, a roll
+ * fixed by the egg comes under SHINY_EGG_CHANCE. The XP it came at, and the level it was then.
+ */
+export const shinyEggOf = (p: Pick<Pixling, 'hatchedAt' | 'xp'>, chance = SHINY_EGG_CHANCE): { xp: number; level: number } | null => {
+  for (let k = 1; k * SHINY_EGG_XP <= p.xp; k++) {
+    if (rollAt(p.hatchedAt, k, 4) < chance) return { xp: k * SHINY_EGG_XP, level: levelOf(k * SHINY_EGG_XP).level }
+  }
+  return null
 }
 
 export const bump = (p: Pixling, stat: keyof Stats, by = 1): Pixling => ({

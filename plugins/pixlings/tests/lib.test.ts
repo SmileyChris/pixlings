@@ -6,7 +6,7 @@ import type { Mood } from '../hooks/lib/canvas.ts'
 import { blockingWindow, formatDuration, iconFor, isTestCommand, riskOf, testOutcome } from '../hooks/lib/detect.ts'
 import { allLines, say } from '../hooks/lib/lines.ts'
 import { assetPath, linuxPlayer, macNotification, platformOfUname, windowsPlayer, windowsToast } from '../hooks/lib/platform.ts'
-import { friendshipOf, gain, gearOf, hatchPixling, levelOf, MATURE_LEVEL, nextEgg, revive, roll, xpForLevel } from '../hooks/lib/progress.ts'
+import { friendshipOf, gain, gearOf, hatchPixling, levelOf, MATURE_LEVEL, nextEgg, rehatch, revive, roll, SHINY_EGG_XP, shinyEggOf, xpForLevel } from '../hooks/lib/progress.ts'
 import { base64, encodeCells, rasterOf, toCells, toSvg } from '../hooks/lib/raster.ts'
 import { checkSpecies, SPECIES } from '../hooks/lib/sprites.ts'
 
@@ -257,5 +257,32 @@ describe('the next egg', () => {
     expect(old.eggSeed).toBeNull()
     expect(nextEgg(old, 10).species).toBe(nextEgg(old, 20).species)
     expect(nextEgg(old, 10).eggSeed).toBe(5)
+  })
+})
+
+describe('the shiny egg', () => {
+  test('each 1,000 XP has 1% of a shiny egg: about two in three by level 99, and the next hatch is shiny', () => {
+    const eggs = Array.from({ length: 4000 }, (_, i) => ({ hatchedAt: 1_700_000_000_000 + i * 7_919_993, xp: xpForLevel(99) }))
+    const laid = eggs.map(e => shinyEggOf(e))
+    const share = (L: number): number => laid.filter(at => at !== null && at.xp <= xpForLevel(L)).length / eggs.length
+    expect(share(99)).toBeGreaterThan(0.64)
+    expect(share(99)).toBeLessThan(0.74)
+    expect(share(30)).toBeGreaterThan(0.08)
+    expect(share(30)).toBeLessThan(0.15)
+    for (const [i, at] of laid.entries()) {
+      if (!at) continue
+      expect(at.xp % SHINY_EGG_XP).toBe(0)
+      expect(at.level).toBe(levelOf(at.xp).level)
+      // Only there once it gets there.
+      expect(shinyEggOf({ ...eggs[i]!, xp: at.xp - 1 })).toBeNull()
+    }
+    const i = laid.findIndex(at => at !== null)
+    const p = { ...hatchPixling(() => 0.4, eggs[i]!.hatchedAt), xp: laid[i]!.xp - 1 }
+    expect(hatchPixling(() => 0.4, 0).isShiny).toBe(false)
+    expect(rehatch(p, () => 0.4, 1).isShiny).toBe(false)
+    const { pixling, isShinyEgg } = gain(p, 'turn')
+    expect(isShinyEgg).toBe(true)
+    expect(gain(pixling, 'turn').isShinyEgg).toBe(false)
+    expect(rehatch(pixling, () => 0.4, 1).isShiny).toBe(true)
   })
 })

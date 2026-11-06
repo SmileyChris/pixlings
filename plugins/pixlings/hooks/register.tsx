@@ -52,6 +52,7 @@ import {
   friendshipOf,
   petWait,
   revive,
+  shinyEggOf,
   UNLOCKS,
   xpBar,
 } from './lib/progress.ts'
@@ -616,11 +617,13 @@ export const register: Register = (on, options) => {
 
   const grant = async (event: XpEvent, stat?: keyof Stats): Promise<void> => {
     if (!io || !pixling) return
-    const { pixling: next, levelUp } = gain(stat ? bump(pixling, stat) : pixling, event)
+    const { pixling: next, levelUp, isShinyEgg } = gain(stat ? bump(pixling, stat) : pixling, event)
     pixling = next
     persist()
     await publishView()
-    if (levelUp) {
+    if (isShinyEgg) {
+      await express({ mood: 'celebrate', priority: PRIORITY.celebrate, holdMs: 4000, line: 'shinyEgg', sound: 'badge', isImportant: true })
+    } else if (levelUp) {
       const unlock = levelUp.unlocks[levelUp.unlocks.length - 1]
       await express({
         mood: 'celebrate',
@@ -2281,8 +2284,9 @@ export const register: Register = (on, options) => {
         const keep = `Keep ${pixling.name}`
         let answer = keep
         try {
+          const egg = shinyEggOf(pixling)
           answer = await $.ui.ask(
-            `Release ${pixling.name} and hatch a new egg? Level and stats start over; your badges, streak, tics and dex are kept.` +
+            `Release ${pixling.name} and hatch ${egg ? `the shiny egg ${pixling.name} laid at level ${egg.level}` : 'a new egg'}? Level and stats start over; your badges, streak, tics and dex are kept.` +
               (nextSeedOf(pixling) !== pixling.hatchedAt
                 ? ` ${pixling.name} hasn't matured yet (level ${MATURE_LEVEL}), so the egg is the one ${pixling.name} came from: the same ${species().name}.`
                 : ''),
@@ -2718,6 +2722,7 @@ export const register: Register = (on, options) => {
       '/pixling share saves this as a trading card · /pixling badges',
     ]
     const friend = friendshipOf(p.stats.pets)
+    const egg = shinyEggOf(p)
     const header = (Box: Kit['Box'], Text: Kit['Text']) => (
       <Box flexDirection="column" marginLeft={2} flexShrink={1}>
         <Text bold color={color}>
@@ -2728,6 +2733,7 @@ export const register: Register = (on, options) => {
           <Text color="#ff4d8d">{friend.hearts}</Text>
           <Text dimColor>{` ${friend.name}${friend.next !== null ? ` · ${friend.next} pet${friend.next === 1 ? '' : 's'} to the next` : ''}`}</Text>
         </Box>
+        {egg ? <Text color="#ffc53d">{`✦ Shiny egg laid at level ${egg.level}`}</Text> : null}
         <Box flexDirection="row">
           <Text color={color}>{xpBar(into, need, 16)}</Text>
           <Text dimColor>{` Lv ${level} · ${into}/${need} xp`}</Text>
