@@ -95,6 +95,8 @@ export function gateRow(v: GateView, width: number): GateSeg[] {
 export function miniGate(v: { effort: Effort | undefined; isAuto: boolean }): GateSeg[] {
   return [
     ...EFFORTS.map((level): GateSeg => ({ text: MINI_STOP[level], role: level === v.effort ? 'active' : 'stop', level })),
-    { text: ' A', role: v.isAuto ? 'autoOn' : 'auto' },
+    // The space its own, so a lit A lights its letter alone.
+    { text: ' ', role: 'sep' },
+    { text: 'A', role: v.isAuto ? 'autoOn' : 'auto' },
   ]
 }

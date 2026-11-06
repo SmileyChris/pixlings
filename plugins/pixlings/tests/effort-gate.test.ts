@@ -224,8 +224,8 @@ describe('gateRow: fitting the width', () => {
 describe('miniGate: the gate for slim and minimal', () => {
   test('on max: L M H X M, the last M active, no knob, then A lit', () => {
     const segs = miniGate({ effort: 'max', isAuto: true })
-    expect(segs.map((s) => s.text)).toEqual(['L', 'M', 'H', 'X', 'M', ' A'])
-    expect(segs.map((s) => s.role)).toEqual(['stop', 'stop', 'stop', 'stop', 'active', 'autoOn'])
+    expect(segs.map((s) => s.text)).toEqual(['L', 'M', 'H', 'X', 'M', ' ', 'A'])
+    expect(segs.map((s) => s.role)).toEqual(['stop', 'stop', 'stop', 'stop', 'active', 'sep', 'autoOn'])
     expect(text(segs)).toBe('LMHXM A')
     expect(text(segs)).not.toContain('●')
   })
@@ -242,8 +242,12 @@ describe('miniGate: the gate for slim and minimal', () => {
   })
 
   test('the A follows isAuto: autoOn when on, auto when off', () => {
-    expect(miniGate({ effort: 'high', isAuto: true }).at(-1)).toEqual({ text: ' A', role: 'autoOn' })
-    expect(miniGate({ effort: 'high', isAuto: false }).at(-1)).toEqual({ text: ' A', role: 'auto' })
+    expect(miniGate({ effort: 'high', isAuto: true }).at(-1)).toEqual({ text: 'A', role: 'autoOn' })
+    expect(miniGate({ effort: 'high', isAuto: false }).at(-1)).toEqual({ text: 'A', role: 'auto' })
+  })
+
+  test('the space before A is a separator of its own, so a lit A lights its letter alone', () => {
+    for (const isAuto of [true, false]) expect(miniGate({ effort: 'high', isAuto }).at(-2)).toEqual({ text: ' ', role: 'sep' })
   })
 
   test('with no effort known yet every letter is a plain stop', () => {

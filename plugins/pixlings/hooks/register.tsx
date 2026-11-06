@@ -2771,7 +2771,7 @@ export const register: Register = (on, options) => {
     const mini = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button']) =>
       gate ? (
         <Box marginLeft={2} flexShrink={0} flexDirection="row">
-          {gateElements({ Text, Button }, miniGate(gate), color, acts)}
+          {gateElements({ Text, Button }, miniGate(gate), { color, ink: CARD_FILL }, acts)}
         </Box>
       ) : null
     const at = now()
@@ -2906,7 +2906,7 @@ export const register: Register = (on, options) => {
       if (piece.kind === 'gate' || piece.kind === 'miniGate') {
         if (!gate) return []
         if (piece.kind === 'miniGate') return [mini(Box, Text, Button)]
-        return gateSegs ? gateElements({ Text, Button }, gateSegs, color, acts) : []
+        return gateSegs ? gateElements({ Text, Button }, gateSegs, { color, ink: CARD_FILL }, acts) : []
       }
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
@@ -3237,7 +3237,7 @@ export const register: Register = (on, options) => {
       bubble: sayingNow(napping, said, at),
       persona,
       vitals: pieces.map(piece => ({ text: piece.text, color: TONE_COLOR[piece.tone], isDim: piece.tone === 'dim' })),
-      gate: gate ? (kit, width, color) => gateElements(kit, gateRow(gate, width), color, acts) : null,
+      gate: gate ? (kit, width, color) => gateElements(kit, gateRow(gate, width), { color, ink: CARD_FILL }, acts) : null,
       squad,
       isPlanning,
       effect,

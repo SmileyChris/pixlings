@@ -41,7 +41,7 @@ effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
 
 - Label `effort` (Chris's call; not "gear", which Pixlings already uses for wearables).
 - Five stops, Claude Code's levels: low, medium, high, xhigh, max. The knob `●` and accent colour sit on the level in use.
-- `A` is the Auto slot at the end, highlighted while Auto is on, dim while off.
+- `A` is the Auto slot at the end, lit like a key while Auto is on (on the accent colour, in dark ink), dim while off.
 - While Auto is on, its short reason follows in dim text (`auto: "<why>"`), cut to fit `e.props.bodyColumns`.
 - **Shift animation (Chris's call):** when the level changes, the dashes between the old stop and the new one turn
   into arrows pointing the way it moved (`L ─ M → H → ●X ─ Mx`), then fade back to dashes after a moment
@@ -55,7 +55,7 @@ effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
     so autoscale fits sizes with it included.
   - `slim` (2 rows) and `minimal` (1 line): a mini gate, `LMHXM A`, in place of `· <effort>` at the end of the vitals
     row (slim) or after the cache countdown (minimal). **No knob:** the active letter is in the accent colour, and
-    the others are dim. `A` is lit while Auto is on. No reason text. The shift arrows don't apply here; a brief
+    the others are dim. `A` is lit like a key while Auto is on, as in the full gate. No reason text. The shift arrows don't apply here; a brief
     colour flash on a change is the builder's call.
 - `off`: no band, but Auto still runs.
 - Surfaces with no band (VS Code, mobile): Auto still runs; the room (`/pixling room`) shows the gate too

@@ -162,11 +162,11 @@ const gateRowOf = (tree: unknown): Node | undefined =>
 /** Every Text's string, in the order drawn. */
 const texts = async (ui: { findAll: (q: { type: 'Text' }) => Promise<readonly { text: string }[]> }): Promise<string[]> =>
   (await ui.findAll({ type: 'Text' })).map(t => t.text)
-/** Whether the Auto slot is lit, as while Auto is on: its letter in the accent colour, not dim. */
+/** Whether the Auto slot is lit, as while Auto is on: its letter lit like a key, on the accent colour, not dim. */
 const isAutoLit = async (ui: { find: (q: never) => Promise<{ children: unknown[] } | undefined> }): Promise<boolean> => {
   const slot = await ui.find({ type: 'Button', key: 'effort-auto' } as never)
   const letter = slot?.children.find((c): c is Node => typeof c === 'object' && c !== null)
-  return typeof letter?.props?.['color'] === 'string' && letter.props['dimColor'] !== true
+  return typeof letter?.props?.['backgroundColor'] === 'string' && letter.props['dimColor'] !== true
 }
 /** The gate row's text as drawn, or undefined when there is none. */
 const gateText = async (ui: { drawn: () => Promise<unknown> }): Promise<string | undefined> => {
@@ -350,7 +350,7 @@ describe('the effort gate in the band', () => {
         const letters = all.indexOf('L')
         expect(at, surface).toBeGreaterThanOrEqual(0)
         expect(letters, surface).toBeGreaterThan(at)
-        expect(all.slice(letters, letters + 6), surface).toEqual(['L', 'M', 'H', 'X', 'M', ' A'])
+        expect(all.slice(letters, letters + 7), surface).toEqual(['L', 'M', 'H', 'X', 'M', ' ', 'A'])
         const lit = (await ui.findAll({ type: 'Text', text: 'H' })).at(0) as unknown as { props: Record<string, unknown> }
         expect(lit.props['color'], surface).toBeDefined()
         const dim = (await ui.findAll({ type: 'Text', text: 'L' })).at(0) as unknown as { props: Record<string, unknown> }
@@ -709,6 +709,65 @@ describe('the effort gate in the band', () => {
     expect(all).toContain('●H')
     expect(await ui.find({ type: 'Button', key: 'effort-auto' } as never)).toBeDefined()
     await ui.unmount()
+  })
+})
+
+/** The Auto slot's letter, the Text inside the `effort-auto` Button. */
+const autoLetter = async (ui: { find: (q: never) => Promise<{ children: unknown[] } | undefined> }): Promise<Node | undefined> => {
+  const slot = await ui.find({ type: 'Button', key: 'effort-auto' } as never)
+  return slot?.children.find((c): c is Node => typeof c === 'object' && c !== null)
+}
+/** The band's dark ink, the card's fill: what a lit key's letter is drawn in on the pixling's colour. */
+const KEY_INK = '#1a1b26'
+
+describe('the Auto slot lit like a key', () => {
+  for (const [band, active] of [['full', '●L'], ['compact', '●L'], ['minimal', 'L']] as const) {
+    test(`${band}: while Auto is on, A is drawn on the pixling's colour in dark ink; off, it is dim with no background`, { options: { band, roam: false } }, async ($, on) => {
+      const { clock } = host(on, ['low'])
+      await $.session.start(START)
+      await clock.advance(3000)
+      await ask($, 'what is a monad')
+      await clock.advance(20_000)
+      for (const surface of SURFACES) {
+        const ui = await $.ui.mount({ ...BAND, surface })
+        const lit = (await ui.findAll({ type: 'Text', text: active })).find(t => typeof (t as unknown as Node).props?.['color'] === 'string') as unknown as Node
+        const color = lit.props?.['color']
+        expect(typeof color, surface).toBe('string')
+        const letter = await autoLetter(ui)
+        expect(strings(letter!).join(''), surface).toBe('A')
+        expect(letter?.props?.['backgroundColor'], surface).toBe(color)
+        expect(letter?.props?.['color'], surface).toBe(KEY_INK)
+        expect(letter?.props?.['dimColor'], surface).toBeFalsy()
+        await ui.unmount()
+      }
+      const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      await ui.press({ key: 'effort-high' })
+      await clock.advance(10)
+      await ui.unmount()
+      for (const surface of SURFACES) {
+        const ui = await $.ui.mount({ ...BAND, surface })
+        const letter = await autoLetter(ui)
+        expect(strings(letter!).join(''), surface).toBe('A')
+        expect(letter?.props?.['backgroundColor'], surface).toBeUndefined()
+        expect(letter?.props?.['dimColor'], surface).toBe(true)
+        await ui.unmount()
+      }
+    })
+  }
+
+  test('the room lights A the same way', async ($, on) => {
+    const { clock } = host(on, ['high'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount(room(surface))
+      const color = ((await ui.find({ type: 'Text', text: '●H' })) as unknown as Node).props?.['color']
+      const letter = await autoLetter(ui)
+      expect(letter?.props?.['backgroundColor'], surface).toBe(color)
+      expect(letter?.props?.['color'], surface).toBe(KEY_INK)
+      await ui.unmount()
+    }
   })
 })
 
