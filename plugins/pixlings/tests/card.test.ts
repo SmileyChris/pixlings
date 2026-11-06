@@ -142,7 +142,7 @@ describe('the share card row', () => {
 
   test('pips show the tier', () => {
     const card = renderCard(withTiers({ hello: 1, exterminator: 2 }), T0)
-    const x = 88 + 8
+    const x = 88 + BADGES.findIndex(b => b.id === 'exterminator') * 8
     expect(at(card, x + 1, 99)).toBe(0xc0c8d4)
     expect(at(card, x + 3, 99)).toBe(0xc0c8d4)
     expect(at(card, x + 5, 99)).toBe(0x2c2f45)

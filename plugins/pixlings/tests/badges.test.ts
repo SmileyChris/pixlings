@@ -86,7 +86,7 @@ describe('lifetime counts', () => {
 describe('tiered badges', () => {
   test('the shelf holds eighteen, in order, with their steps', () => {
     expect(BADGES.map(b => b.id)).toEqual([
-      'hello', 'exterminator', 'dangerous', 'nightOwl', 'survivor', 'shipper', 'liftoff', 'centurion', 'onFire',
+      'hello', 'survivor', 'exterminator', 'dangerous', 'nightOwl', 'shipper', 'liftoff', 'centurion', 'onFire',
       'lucky', 'absolutelyRight', 'bestFriends', 'greenThumb', 'collector', 'archmage', 'brainFreeze', 'heardItAll', 'regular',
     ])
     const steps = Object.fromEntries(BADGES.map(b => [b.id, b.steps]))

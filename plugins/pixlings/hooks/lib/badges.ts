@@ -61,6 +61,16 @@ export const BADGES: readonly Badge[] = [
     colors: { W: 0xf4efe1, K: 0x6b5b45 },
   },
   {
+    id: 'survivor',
+    name: 'Limit Survivor',
+    emoji: '⏳',
+    steps: [1],
+    count: p => p.stats.naps,
+    how: once('Sleep through a rate limit'),
+    icon: ['BBBBBBB', '.Y...Y.', '..YYY..', '...Y...', '..Y.Y..', '.YYYYY.', 'BBBBBBB'],
+    colors: { B: 0x8a6b4a, Y: 0xffd23f },
+  },
+  {
     id: 'exterminator',
     name: 'Exterminator',
     emoji: '🐛',
@@ -90,16 +100,6 @@ export const BADGES: readonly Badge[] = [
     how: n => `Work ${grouped(n)} turns after midnight`,
     icon: ['..YYY..', '.YY...W', 'YY.....', 'YY...W.', 'YY.....', '.YY....', '..YYY..'],
     colors: { Y: 0xffe98a, W: 0xffffff },
-  },
-  {
-    id: 'survivor',
-    name: 'Limit Survivor',
-    emoji: '⏳',
-    steps: [1],
-    count: p => p.stats.naps,
-    how: once('Sleep through a rate limit'),
-    icon: ['BBBBBBB', '.Y...Y.', '..YYY..', '...Y...', '..Y.Y..', '.YYYYY.', 'BBBBBBB'],
-    colors: { B: 0x8a6b4a, Y: 0xffd23f },
   },
   {
     id: 'shipper',
