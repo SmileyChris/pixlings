@@ -30,7 +30,8 @@ export type Stats = {
 
 /**
  * What the person has done across every egg, for the badges: the stats a hatch resets, kept on,
- * and the shiny eggs laid.
+ * and the shiny eggs laid by pixlings since hatched. The egg the pixling has laid now is not in it:
+ * that one is read from its XP, which merges across sessions without counting an egg twice.
  */
 export type Lifetime = {
   turns: number
@@ -210,7 +211,9 @@ export const seededRandom = (seed: number): (() => number) => {
 /** The next egg after `p`, rolled from its seed: the same until a pixling matures. */
 export const nextEgg = (p: Pixling, now: number): Pixling => {
   const seed = nextSeedOf(p)
-  return { ...rehatch(p, seededRandom(seed), now), eggSeed: seed }
+  const egg = rehatch(p, seededRandom(seed), now)
+  // Hatched in a session already counted: the egg's first, but no new one for the person.
+  return { ...egg, eggSeed: seed, stats: { ...egg.stats, sessions: 1 } }
 }
 
 /** A new egg for the same person: the badges, streak, tics and dex are theirs and stay. */
@@ -220,7 +223,7 @@ export const rehatch = (p: Pixling, random: () => number, now: number): Pixling 
   badges: p.badges,
   streak: p.streak,
   tics: p.tics,
-  lifetime: p.lifetime,
+  lifetime: { ...p.lifetime, shinyEggs: p.lifetime.shinyEggs + (shinyEggOf(p) !== null ? 1 : 0) },
 })
 
 // Experience ------------------------------------------------------------------------------------
@@ -393,7 +396,6 @@ export const gain = (
   const after = levelOf(pixling.xp).level
   // Laid by now and not before: this gain crossed the step it came at.
   const isShinyEgg = shinyEggOf(p) === null && shinyEggOf(pixling) !== null
-  if (isShinyEgg) pixling.lifetime = { ...pixling.lifetime, shinyEggs: pixling.lifetime.shinyEggs + 1 }
   if (after <= before) return { pixling, levelUp: null, isShinyEgg }
   return {
     pixling,
@@ -481,7 +483,8 @@ const seedLifetime = (v: Partial<Pixling>, hatchedAt: number): Lifetime => {
   const isLucky = isRecord(v.badges) && typeof v.badges.lucky === 'number'
   const lifetime = emptyLifetime()
   for (const k of LIFETIME_STATS) lifetime[k] = numberOr(stats[k], 0)
-  lifetime.shinyEggs = Math.max(isLucky ? 1 : 0, (v.isShiny === true ? 1 : 0) + laid)
+  // Its own egg is read from its XP; Lucky earned without one means an egg hatched before.
+  lifetime.shinyEggs = Math.max((isLucky ? 1 : 0) - laid, v.isShiny === true ? 1 : 0)
   return lifetime
 }
 

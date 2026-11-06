@@ -3,7 +3,7 @@ import type { Elements, PromptOrigin, Register, Timer } from 'claude-code'
 
 import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
-import { award, BADGES, badgeTitle, countDay, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
+import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
 import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
@@ -675,7 +675,7 @@ export const register: Register = (on, options) => {
       sound: 'badge',
     })
     const more = earned.length > 1 ? ` (+${earned.length - 1} more)` : ''
-    const how = first.badge.how(first.badge.steps[first.tier - 1] ?? 1).toLowerCase()
+    const how = howOf(first.badge, first.tier)
     toast(`🏅 Badge: ${first.badge.emoji} ${badgeTitle(first.badge, first.tier)}, ${how}${more}. See /pixling badges`, 8000)
   }
 
@@ -954,8 +954,9 @@ export const register: Register = (on, options) => {
   const hatch = async (): Promise<void> => {
     const port = io
     if (!port) return
-    const egg = pixling ? nextEgg(pixling, now()) : hatchPixling(Math.random, now())
-    pixling = touchDay(bump(egg, 'sessions'), now()).pixling
+    // The first egg starts this session's count; a later one's is set by nextEgg.
+    const egg = pixling ? nextEgg(pixling, now()) : bump(hatchPixling(Math.random, now()), 'sessions')
+    pixling = touchDay(egg, now()).pixling
     await commit()
     const s = species()
     const tier = s.rarity === 'legendary' ? 3 : s.rarity === 'rare' || s.rarity === 'epic' ? 2 : 1

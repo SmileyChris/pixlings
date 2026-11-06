@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { award, BADGES, badgeTitle, progressOf, tierOf } from '../hooks/lib/badges.ts'
+import { award, BADGES, badgeTitle, howOf, progressOf, tierOf } from '../hooks/lib/badges.ts'
 import type { Badge } from '../hooks/lib/badges.ts'
-import { bump, gain, hatchPixling, mergeSave, rehatch, revive, shinyEggOf } from '../hooks/lib/progress.ts'
+import { bump, gain, hatchPixling, mergeSave, nextEgg, rehatch, revive, shinyEggOf } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
 
 const seeded = (seed: number) => () => {
@@ -13,6 +13,11 @@ const seeded = (seed: number) => () => {
 const T0 = Date.parse('2026-10-03T12:00:00Z')
 
 const fresh = (): Pixling => hatchPixling(seeded(1), T0)
+const badge = (id: string): Badge => BADGES.find(b => b.id === id)!
+const withLifetime = (over: Partial<Pixling['lifetime']>): Pixling => {
+  const p = fresh()
+  return { ...p, lifetime: { ...p.lifetime, ...over } }
+}
 
 describe('lifetime counts', () => {
   test('bump counts into lifetime', () => {
@@ -30,19 +35,28 @@ describe('lifetime counts', () => {
     expect(egg.lifetime.turns).toBe(900)
   })
 
-  test('laying a shiny egg counts', () => {
+  test('a laid egg counts once toward Lucky, however many sessions saw it laid', () => {
     let hatchedAt = T0
     while (shinyEggOf({ hatchedAt, xp: 100_000 }) === null) hatchedAt++
-    const at = shinyEggOf({ hatchedAt, xp: 100_000 })!.xp
-    let p: Pixling = { ...fresh(), hatchedAt, xp: at - 1 }
-    let laid = false
-    for (let i = 0; i < 10 && !laid; i++) {
-      const r = gain(p, 'bugSquashed')
-      p = r.pixling
-      laid = r.isShinyEgg
-    }
-    expect(laid).toBe(true)
-    expect(p.lifetime.shinyEggs).toBe(1)
+    const due = shinyEggOf({ hatchedAt, xp: 100_000 })!.xp
+    const base: Pixling = { ...fresh(), hatchedAt, xp: due - 10 }
+    // Two sessions each squash a bug from the same base: both cross the step the egg comes at.
+    const a = gain(base, 'bugSquashed').pixling
+    const b = gain(base, 'bugSquashed').pixling
+    const merged = mergeSave(mergeSave(base, base, a), base, b)
+    expect(badge('lucky').count(merged)).toBe(1)
+    expect(merged.lifetime.shinyEggs).toBe(0)
+    // Hatched, the egg moves into the lifetime count, and the new egg has laid none.
+    const egg = rehatch(merged, seeded(4), T0 + 1)
+    expect(egg.lifetime.shinyEggs).toBe(1)
+    expect(badge('lucky').count(egg)).toBe(1)
+  })
+
+  test('a hatch in a session counts the egg its session, not the person another', () => {
+    const p = withLifetime({ sessions: 40 })
+    const egg = nextEgg({ ...p, stats: { ...p.stats, sessions: 7 } }, T0 + 1)
+    expect(egg.stats.sessions).toBe(1)
+    expect(egg.lifetime.sessions).toBe(40)
   })
 
   test('an old save seeds lifetime', () => {
@@ -67,11 +81,6 @@ describe('lifetime counts', () => {
   })
 })
 
-const badge = (id: string): Badge => BADGES.find(b => b.id === id)!
-const withLifetime = (over: Partial<Pixling['lifetime']>): Pixling => {
-  const p = fresh()
-  return { ...p, lifetime: { ...p.lifetime, ...over } }
-}
 
 describe('tiered badges', () => {
   test('the shelf holds eighteen, in order, with their steps', () => {
@@ -133,5 +142,8 @@ describe('tiered badges', () => {
     expect(badge('lucky').how(4)).toBe('Lay 4 shiny eggs')
     expect(badgeTitle(badge('exterminator'), 2)).toBe('Exterminator · Silver')
     expect(badgeTitle(badge('hello'), 1)).toBe('Hello, World')
+    // For the toast, after a comma: lowercase to start, names kept.
+    expect(howOf(badge('heardItAll'), 1)).toBe("hear Claude's tics 50 times in all")
+    expect(howOf(badge('centurion'), 3)).toBe('finish 10,000 turns')
   })
 })

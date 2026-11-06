@@ -4,7 +4,7 @@
 // A badge or a tier added in a later version is awarded the first time its test passes.
 
 import type { Day, Pixling } from './progress.ts'
-import { emptyDay, levelOf } from './progress.ts'
+import { emptyDay, levelOf, shinyEggOf } from './progress.ts'
 import { totalTics } from './tics.ts'
 
 export type BadgeId =
@@ -146,7 +146,8 @@ export const BADGES: readonly Badge[] = [
     name: 'Lucky',
     emoji: '✨',
     steps: [1, 2, 4],
-    count: p => p.lifetime.shinyEggs,
+    // The eggs hatched, and the one this pixling has laid.
+    count: p => p.lifetime.shinyEggs + (shinyEggOf(p) !== null ? 1 : 0),
     how: n => (n === 1 ? 'Lay a shiny egg' : `Lay ${grouped(n)} shiny eggs`),
     icon: ['...Y...', '...Y...', '..YYY..', 'YYYWYYY', '..YYY..', '...Y...', '...Y...'],
     colors: { Y: 0xffe14d, W: 0xffffff },
@@ -259,6 +260,12 @@ export const progressOf = (b: Badge, p: Pixling): { tier: number; have: number; 
 /** "Exterminator · Silver"; a single badge is its name. */
 export const badgeTitle = (b: Badge, tier: number): string =>
   isTiered(b) && tier >= 1 ? `${b.name} · ${TIERS[tier - 1]}` : b.name
+
+/** How tier `tier` was earned, for the toast after a comma. */
+export const howOf = (b: Badge, tier: number): string => {
+  const how = b.how(b.steps[tier - 1] ?? 1)
+  return how.charAt(0).toLowerCase() + how.slice(1)
+}
 
 /** The medal for a tiered badge's tier, or nothing. */
 export const medalOf = (b: Badge, tier: number): string => (isTiered(b) && tier >= 1 ? (MEDALS[tier - 1] ?? '') : '')
