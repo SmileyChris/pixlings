@@ -1,0 +1,503 @@
+// Auto effort: the pure decisions (planPrompt, settle, readAutoConfig, readStoredPick) and the per-session controller,
+// driven by plain fake deps and a fake clock, with no engine.
+
+import { describe, expect } from 'claude-code/testing'
+
+import type { PixlingsEffortPick, PixlingsEffortShift } from '../types'
+import { createAuto, planPrompt, readAutoConfig, readStoredPick, settle, SWITCHED_MS } from '../hooks/effort/auto.ts'
+import type { AutoConfig, AutoDeps, PromptFacts } from '../hooks/effort/auto.ts'
+import type { Verdict } from '../hooks/effort/haiku.ts'
+import type { Effort, Pick } from '../hooks/effort/judge.ts'
+import { test } from './kit.ts'
+
+const CFG: AutoConfig = { isOn: true, floor: 'low', ceiling: 'max', bias: 0 }
+
+const facts = (over: Partial<PromptFacts> = {}): PromptFacts => ({
+  text: 'refactor the auth module',
+  isPerson: true,
+  isSlash: false,
+  hasAttachments: false,
+  modelId: 'claude-opus-5-5',
+  context: '',
+  midTurn: false,
+  ...over,
+})
+const byHaiku = (effort: Effort): PixlingsEffortPick => ({ effort, why: 'judged', by: 'haiku' })
+
+describe('planPrompt', () => {
+  test('skips what Auto never judges', () => {
+    const current = byHaiku('medium')
+    expect(planPrompt(facts({ isPerson: false }), true, current)).toEqual({ kind: 'skip' })
+    expect(planPrompt(facts({ text: '/compact', isSlash: true }), true, current)).toEqual({ kind: 'skip' })
+    expect(planPrompt(facts(), false, current)).toEqual({ kind: 'skip' })
+    expect(planPrompt(facts({ modelId: 'claude-fable-5-1' }), true, current)).toEqual({ kind: 'skip' })
+    expect(planPrompt(facts({ modelId: 'claude-haiku-5-5' }), true, current)).toEqual({ kind: 'skip' })
+  })
+
+  test('a bare follow-up keeps the Auto level', () => {
+    expect(planPrompt(facts({ text: 'go' }), true, byHaiku('high'))).toEqual({ kind: 'keep' })
+  })
+
+  test('a follow-up with an attachment, or answering a question, is judged', () => {
+    expect(planPrompt(facts({ text: 'go', hasAttachments: true }), true, byHaiku('high')).kind).toBe('judge')
+    expect(planPrompt(facts({ text: 'go', context: 'assistant: Should I build the parser?' }), true, byHaiku('high')).kind).toBe('judge')
+  })
+
+  test('a follow-up after a manual pick is judged', () => {
+    expect(planPrompt(facts({ text: 'go' }), true, { effort: 'low', why: 'your pick', by: 'manual' }).kind).toBe('judge')
+  })
+
+  test('a named level skips the judge', () => {
+    expect(planPrompt(facts({ text: 'max effort please' }), true, byHaiku('low'))).toEqual({ kind: 'named', effort: 'max' })
+  })
+
+  test('the judge is told about a skill and a message typed mid-turn', () => {
+    const skill = planPrompt(facts({ text: '/review the diff', isSlash: true, skill: { name: 'review', description: 'Review a diff' } }), true, null)
+    expect(skill).toEqual({ kind: 'judge', question: '/review the diff\n\n[This is a slash command that runs a skill: Review a diff. Judge the work the skill will do.]' })
+    const mid = planPrompt(facts({ text: 'also fix the docs', midTurn: true }), true, byHaiku('high'))
+    expect(mid.kind).toBe('judge')
+    if (mid.kind === 'judge') expect(mid.question).toContain('[Sent while the assistant was still working on the last task at high effort.')
+  })
+
+  test('the judge is told the message carries attachments', () => {
+    const plan = planPrompt(facts({ text: 'fix this', hasAttachments: true, attachments: [{ type: 'image' }, { type: 'image' }] }), true, null)
+    expect(plan).toEqual({ kind: 'judge', question: 'fix this\n\n[The message comes with 2 images to look at.]' })
+  })
+})
+
+describe('settle', () => {
+  test('the ceiling caps a verdict, and says it was your settings', () => {
+    expect(settle({ effort: 'max', why: 'huge job', sure: 0.9 }, { ...CFG, ceiling: 'high' })).toEqual({ effort: 'high', why: 'your settings' })
+  })
+
+  test('the bias tips a close call', () => {
+    expect(settle({ effort: 'high', why: 'tricky', sure: 0.5 }, { ...CFG, bias: -1 })).toEqual({ effort: 'medium', why: 'your settings' })
+  })
+
+  test('an untouched verdict keeps its reason', () => {
+    expect(settle({ effort: 'high', why: 'tricky', sure: 0.9 }, CFG)).toEqual({ effort: 'high', why: 'tricky' })
+  })
+})
+
+describe('readAutoConfig', () => {
+  test('defaults', () => {
+    expect(readAutoConfig({})).toEqual({ isOn: true, floor: 'low', ceiling: 'max', bias: 0 })
+  })
+
+  test('bad values read as defaults', () => {
+    expect(readAutoConfig({ effortBias: '9', effortFloor: 'x' })).toEqual({ isOn: true, floor: 'low', ceiling: 'max', bias: 0 })
+  })
+
+  test('values as stored', () => {
+    expect(readAutoConfig({ autoEffort: false, effortFloor: 'medium', effortCeiling: 'xhigh', effortBias: '-1' })).toEqual({
+      isOn: false,
+      floor: 'medium',
+      ceiling: 'xhigh',
+      bias: -1,
+    })
+  })
+})
+
+describe('readStoredPick', () => {
+  test('bad stored pick reads as none', () => {
+    expect(readStoredPick('banana')).toBeNull()
+    expect(readStoredPick({ effort: 'huge' })).toBeNull()
+    expect(readStoredPick(null)).toBeNull()
+    expect(readStoredPick({ effort: 'high', why: 'x', by: 'jev' })).toBeNull()
+  })
+
+  test('a good pick reads as itself', () => {
+    expect(readStoredPick({ effort: 'high', why: 'x', by: 'manual' })).toEqual({ effort: 'high', why: 'x', by: 'manual' })
+  })
+})
+
+// --- the controller ---
+
+type Answer = Verdict | null | Promise<Verdict | null>
+
+type Fake = {
+  deps: AutoDeps
+  state: { pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }
+  stored: Map<string, unknown>
+  sets: [string, unknown][]
+  toasts: string[]
+  typed: Effort[]
+  asked: { prompt: string; current: Pick | null; context: string }[]
+  /** What the judge answers, in turn; null (didn't answer) once they run out. */
+  verdicts: Answer[]
+  clock: { now: number }
+}
+
+const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; verdicts?: Answer[] } = {}): Fake => {
+  const f: Fake = {
+    state: {},
+    stored: opts.stored ?? new Map(),
+    sets: [],
+    toasts: [],
+    typed: [],
+    asked: [],
+    verdicts: [...(opts.verdicts ?? [])],
+    clock: { now: 1_000 },
+    deps: undefined as unknown as AutoDeps,
+  }
+  f.deps = {
+    now: () => f.clock.now,
+    setState: async p => {
+      Object.assign(f.state, p)
+    },
+    store: {
+      get: async k => f.stored.get(k),
+      set: async (k, v) => {
+        f.sets.push([k, v])
+        f.stored.set(k, v)
+      },
+    },
+    toast: t => {
+      f.toasts.push(t)
+    },
+    typeEffort: async level => {
+      f.typed.push(level)
+    },
+    ask: async (prompt, current, context) => {
+      f.asked.push({ prompt, current, context })
+      return (await f.verdicts.shift()) ?? null
+    },
+    cfg: { ...CFG, ...opts.cfg },
+  }
+  return f
+}
+
+/** A loaded controller whose pick is already `effort` by haiku, with nothing recorded yet. */
+const withPick = async (f: Fake, effort: Effort) => {
+  const auto = createAuto(f.deps)
+  await auto.load()
+  f.verdicts.unshift({ effort, why: 'judged' })
+  await auto.onPrompt(facts())
+  f.asked.length = 0
+  f.sets.length = 0
+  f.toasts.length = 0
+  return auto
+}
+
+describe('createAuto', () => {
+  test('verdict applies and shifts', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'medium')
+    f.verdicts.push({ effort: 'xhigh', why: 'big refactor' })
+    f.clock.now = 5_000
+    await auto.onPrompt(facts())
+    expect(auto.view().pick).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
+    expect(auto.view().shift).toEqual({ from: 'medium', to: 'xhigh', until: 5_000 + 2500 })
+    expect(SWITCHED_MS).toBe(2500)
+    expect(f.state.pick).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
+    expect(f.state.shift).toEqual({ from: 'medium', to: 'xhigh', until: 7_500 })
+    expect(f.stored.get('effortPick')).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
+  })
+
+  test('the judge is asked with the current pick and the context', async () => {
+    const f = fake({ verdicts: [{ effort: 'high', why: 'x' }] })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    await auto.onPrompt(facts({ text: 'refactor it', context: 'user: hi' }))
+    expect(f.asked).toEqual([{ prompt: 'refactor it', current: { model: 'opus', effort: 'medium', why: '', by: 'manual' }, context: 'user: hi' }])
+  })
+
+  test('named level skips the judge', async () => {
+    const f = fake({ cfg: { ceiling: 'high' } })
+    const auto = await withPick(f, 'medium')
+    await auto.onPrompt(facts({ text: 'max effort please' }))
+    expect(f.asked).toHaveLength(0)
+    expect(auto.view().pick).toEqual({ effort: 'max', why: 'you asked for it', by: 'named' })
+  })
+
+  test('mid-turn lower verdict waits for the turn to end', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    f.verdicts.push({ effort: 'low', why: 'small' })
+    await auto.onPrompt(facts({ text: 'also rename it', midTurn: true }))
+    expect(auto.view().pick?.effort).toBe('high')
+    await auto.onTurnEnd()
+    expect(auto.view().pick).toEqual({ effort: 'low', why: 'small', by: 'haiku' })
+    expect(f.state.pick?.effort).toBe('low')
+  })
+
+  test('mid-turn higher verdict applies at once', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'medium')
+    f.verdicts.push({ effort: 'max', why: 'harder' })
+    await auto.onPrompt(facts({ text: 'and redo the schema', midTurn: true }))
+    expect(auto.view().pick?.effort).toBe('max')
+  })
+
+  test('a held pick is dropped when Auto went off before the turn ended', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    f.verdicts.push({ effort: 'low', why: 'small' })
+    await auto.onPrompt(facts({ text: 'also rename it', midTurn: true }))
+    await auto.toggleAuto()
+    await auto.onTurnEnd()
+    expect(auto.view().pick?.effort).toBe('high')
+  })
+
+  test("haiku failure drops to medium for the session", async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    await auto.onPrompt(facts())
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+    expect(f.state.isAuto).toBe(false)
+    expect(f.state.pick).toEqual({ effort: 'medium', why: "Haiku didn't answer", by: 'manual' })
+    expect(f.toasts).toHaveLength(1)
+    expect(f.sets.filter(([k]) => k === 'effortAuto')).toEqual([])
+    expect(f.typed).toEqual([])
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(true)
+    await auto.onPrompt(facts())
+    expect(auto.view().isAuto).toBe(false)
+    expect(f.toasts).toHaveLength(2)
+  })
+
+  test('failure is session-only', async () => {
+    const stored = new Map<string, unknown>()
+    const f = fake({ stored })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    await auto.onPrompt(facts())
+    expect(auto.view().isAuto).toBe(false)
+    const again = createAuto(fake({ stored }).deps)
+    await again.load()
+    expect(again.view().isAuto).toBe(true)
+  })
+
+  test('a second prompt while the judge is out keeps the level', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'medium')
+    let answer: (v: Verdict | null) => void = () => undefined
+    f.verdicts.push(new Promise<Verdict | null>(resolve => (answer = resolve)))
+    const first = auto.onPrompt(facts())
+    await Promise.resolve()
+    expect(auto.view().isJudging).toBe(true)
+    await auto.onPrompt(facts({ text: 'and the tests' }))
+    expect(f.asked).toHaveLength(1)
+    answer({ effort: 'high', why: 'x' })
+    await first
+    expect(auto.view().isJudging).toBe(false)
+    expect(auto.view().pick?.effort).toBe('high')
+  })
+
+  test('a level picked while the judge is out stands', async () => {
+    for (const answer of [{ effort: 'high', why: 'x' } as Verdict, null]) {
+      const f = fake()
+      const auto = await withPick(f, 'medium')
+      let reply: (v: Verdict | null) => void = () => undefined
+      f.verdicts.push(new Promise<Verdict | null>(resolve => (reply = resolve)))
+      const judged = auto.onPrompt(facts())
+      await auto.pickLevel('max')
+      reply(answer)
+      await judged
+      expect(auto.view().pick).toEqual({ effort: 'max', why: 'your pick', by: 'manual' })
+      expect(f.toasts).toEqual([])
+    }
+  })
+
+  test('a throwing dependency never throws into the turn', async () => {
+    const f = fake()
+    const auto = createAuto({
+      ...f.deps,
+      setState: async () => {
+        throw new Error('state')
+      },
+      store: {
+        get: async () => {
+          throw new Error('get')
+        },
+        set: async () => {
+          throw new Error('set')
+        },
+      },
+      toast: () => {
+        throw new Error('toast')
+      },
+      typeEffort: async () => {
+        throw new Error('type')
+      },
+      ask: async () => {
+        throw new Error('ask')
+      },
+    })
+    await auto.load()
+    await auto.onPrompt(facts())
+    expect(auto.view().pick?.effort).toBe('medium')
+    await auto.pickLevel('low')
+    await auto.toggleAuto()
+    await auto.onTurnEnd()
+    expect(() => auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'max' })).not.toThrow()
+  })
+
+  test('pickLevel', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    await auto.pickLevel('low')
+    expect(auto.view().isAuto).toBe(false)
+    expect(f.stored.get('effortAuto')).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'low', why: 'your pick', by: 'manual' })
+    expect(f.state.pick).toEqual({ effort: 'low', why: 'your pick', by: 'manual' })
+    expect(f.typed).toEqual(['low'])
+    expect(auto.view().shift).toBeNull()
+  })
+
+  test('toggleAuto', async () => {
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.view().isAuto).toBe(true)
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(false)
+    expect(f.state.isAuto).toBe(false)
+    expect(f.stored.get('effortAuto')).toBe(false)
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(true)
+    expect(f.stored.get('effortAuto')).toBe(true)
+  })
+
+  test('load restores Auto off and the pick that was in force', async () => {
+    const stored = new Map<string, unknown>([
+      ['effortAuto', false],
+      ['effortPick', { effort: 'xhigh', why: 'your pick', by: 'manual' }],
+    ])
+    const f = fake({ stored })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'xhigh', why: 'your pick', by: 'manual' })
+    expect(f.state).toEqual({ isAuto: false, pick: { effort: 'xhigh', why: 'your pick', by: 'manual' } })
+  })
+
+  test('load ignores garbage in the store', async () => {
+    const stored = new Map<string, unknown>([
+      ['effortAuto', 'nope'],
+      ['effortPick', 'banana'],
+    ])
+    const auto = createAuto(fake({ stored }).deps)
+    await auto.load()
+    expect(auto.view().isAuto).toBe(true)
+    expect(auto.view().pick).toBeNull()
+  })
+
+  test('requestEffort', async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    expect(auto.requestEffort({ modelId: 'claude-fable-5-1', effort: 'medium' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: 'claude-haiku-5-5', effort: undefined })).toBeUndefined()
+
+    const low = await withPick(fake({ cfg: { floor: 'low' } }), 'low')
+    expect(low.requestEffort({ modelId: opus, effort: 'medium', agentId: 'a1' })).toBe('medium')
+    expect(low.requestEffort({ modelId: opus, effort: 'medium', agentId: 'a1' })).toBe('medium')
+
+    const manual = createAuto(fake().deps)
+    await manual.load()
+    await manual.pickLevel('low')
+    expect(manual.requestEffort({ modelId: opus, effort: 'medium', agentId: 'a1' })).toBeUndefined()
+    expect(manual.requestEffort({ modelId: opus, effort: 'medium' })).toBe('low')
+
+    const off = await withPick(fake(), 'high')
+    await off.toggleAuto()
+    expect(off.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+  })
+
+  test('requestEffort with no pick leaves the request as it is', async () => {
+    const auto = createAuto(fake().deps)
+    await auto.load()
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'medium' })).toBeUndefined()
+  })
+
+  test('autoEffort off leaves everything alone', async () => {
+    const f = fake({ cfg: { isOn: false }, verdicts: [{ effort: 'high', why: 'x' }] })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    await auto.onPrompt(facts())
+    expect(f.asked).toHaveLength(0)
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'medium' })).toBeUndefined()
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'max' })).toBeUndefined()
+    expect(f.toasts).toEqual([])
+  })
+
+  test("a level Pixlings set is not mistaken for the person's", async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+    await auto.pickLevel('low')
+    f.sets.length = 0
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('low')
+    // The person pressed Enter on the /effort Pixlings typed: the app is on low now.
+    expect(auto.requestEffort({ modelId: opus, effort: 'low' })).toBe('low')
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'low', why: 'your pick', by: 'manual' })
+    expect(f.toasts).toEqual([])
+    expect(f.sets).toEqual([])
+
+    const g = fake()
+    const sent = await withPick(g, 'high')
+    expect(sent.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    expect(sent.requestEffort({ modelId: opus, effort: 'high' })).toBe('high')
+    expect(sent.view().isAuto).toBe(true)
+    expect(sent.view().pick?.by).toBe('haiku')
+    expect(g.toasts).toEqual([])
+  })
+
+  test('the app taking the typed /effort before any request carried it is not the person', async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBeUndefined()
+    await auto.pickLevel('xhigh')
+    expect(auto.requestEffort({ modelId: opus, effort: 'xhigh' })).toBe('xhigh')
+    expect(auto.view().pick).toEqual({ effort: 'xhigh', why: 'your pick', by: 'manual' })
+    expect(f.toasts).toEqual([])
+  })
+
+  test("the person's own change turns Auto off", async () => {
+    const opus = 'claude-opus-5-5'
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    expect(auto.requestEffort({ modelId: opus, effort: 'medium' })).toBe('high')
+    expect(auto.requestEffort({ modelId: opus, effort: 'max' })).toBeUndefined()
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().pick).toEqual({ effort: 'max', why: 'your pick in the app', by: 'manual' })
+    await Promise.resolve()
+    expect(f.stored.get('effortAuto')).toBe(false)
+    expect(f.state.isAuto).toBe(false)
+    expect(f.state.pick).toEqual({ effort: 'max', why: 'your pick in the app', by: 'manual' })
+    expect(f.toasts).toHaveLength(1)
+    expect(f.toasts[0]).toContain('Max')
+    expect(auto.requestEffort({ modelId: opus, effort: 'max' })).toBe('max')
+    expect(f.toasts).toHaveLength(1)
+  })
+
+  test('a model switch is not the person changing effort', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'medium' })).toBe('high')
+    expect(auto.requestEffort({ modelId: 'claude-sonnet-5-5', effort: 'low' })).toBe('high')
+    expect(auto.view().isAuto).toBe(true)
+    expect(f.toasts).toEqual([])
+  })
+
+  test("a new session with Auto off takes the app's level over the carried pick", async () => {
+    const stored = new Map<string, unknown>([
+      ['effortAuto', false],
+      ['effortPick', { effort: 'xhigh', why: 'your pick', by: 'manual' }],
+    ])
+    const f = fake({ stored })
+    const auto = createAuto(f.deps)
+    await auto.load()
+    expect(auto.requestEffort({ modelId: 'claude-opus-5-5', effort: 'low' })).toBeUndefined()
+    expect(auto.view().pick).toEqual({ effort: 'low', why: 'your pick in the app', by: 'manual' })
+    expect(f.toasts).toHaveLength(1)
+  })
+})

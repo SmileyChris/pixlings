@@ -143,6 +143,51 @@
       "title": "Heckle in the transcript",
       "description": "Adds a faint eye roll and running count after Claude's \"You're absolutely right\" replies. Only the view changes; the saved conversation is untouched.",
       "default": false
+    },
+    "autoEffort": {
+      "type": "boolean",
+      "title": "Auto effort",
+      "description": "Claude Haiku picks the effort for each prompt you send, and the band shows a gate for picking it yourself (off: no judging, no gate, and the app's own effort).",
+      "default": true
+    },
+    "effortFloor": {
+      "type": "string",
+      "title": "Auto effort never below",
+      "description": "Auto never picks a lower effort than this.",
+      "options": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default": "low"
+    },
+    "effortCeiling": {
+      "type": "string",
+      "title": "Auto effort never above",
+      "description": "Auto never picks a higher effort than this.",
+      "options": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default": "max"
+    },
+    "effortBias": {
+      "type": "string",
+      "title": "Auto effort lean",
+      "description": "From -2 cheaper to 2 smarter, it tips the judge's close calls that way while sure calls stay as judged (0: as the judge says).",
+      "options": [
+        "-2",
+        "-1",
+        "0",
+        "1",
+        "2"
+      ],
+      "default": "0"
     }
   }
 }

@@ -73,6 +73,17 @@ export type PixlingsEffect = { kind: string; at: number } | null
 /** The room pane: which shelf is showing. */
 export type PixlingsRoom = { tab: string }
 
+// --- auto effort ---
+
+/** The effort level in force and who decided it (named: the prompt said the level); null before the first pick. */
+export type PixlingsEffortPick = { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'; why: string; by: 'haiku' | 'named' | 'manual' } | null
+
+/** Auto effort is on: Haiku judges each prompt's effort. */
+export type PixlingsEffortAuto = boolean
+
+/** Auto's last change of level, drawn as arrows until `until` (ms on the session clock). */
+export type PixlingsEffortShift = { from: string; to: string; until: number } | null
+
 declare module 'claude-code' {
   interface PluginState {
     pixlings: {
@@ -96,6 +107,10 @@ declare module 'claude-code' {
       isRoomOpen: boolean
       /** The birth time of the pixling whose nest `/pixling hatch` opened in the room; null when closed. */
       nest: number | null
+      // auto effort
+      effortPick: PixlingsEffortPick
+      effortAuto: PixlingsEffortAuto
+      effortShift: PixlingsEffortShift
     }
   }
 }
