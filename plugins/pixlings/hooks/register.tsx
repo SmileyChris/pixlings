@@ -9,6 +9,8 @@ import { gateColumns, gateRow, miniGate } from './effort/gate.ts'
 import { gateElements } from './effort/gate-view.ts'
 import type { GateActions } from './effort/gate-view.ts'
 import { askHaiku } from './effort/haiku.ts'
+import { savedEffortFor, savedEffortsOf } from './effort/saved.ts'
+import type { SavedEfforts } from './effort/saved.ts'
 import { cacheSafe, contextFrom, EFFORTS } from './effort/judge.ts'
 import type { Effort } from './effort/judge.ts'
 import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
@@ -288,6 +290,20 @@ async function setAppEffort($: EngineInterface, level: Effort): Promise<void> {
   } catch {
     // Never into a turn.
   }
+}
+
+/** A level a click on the gate picked, not yet sent to the app as `/effort`. */
+type PendingEffort = { level: Effort | null }
+
+/**
+ * Sends the pending `/effort`. A command cannot run inside a hook the turn waits on (`prompt.submit`, a command's own),
+ * so it starts on the clock just after that hook returns; the engine queues it till the session is idle.
+ */
+function sendPendingEffort($: EngineInterface, pending: PendingEffort): void {
+  if (pending.level === null) return
+  const level = pending.level
+  pending.level = null
+  $.clock.after(0, () => void setAppEffort($, level))
 }
 
 type GateView = Parameters<typeof gateRow>[0]
@@ -1404,6 +1420,13 @@ export const register: Register = (on, options) => {
    */
   let model: string | undefined
   let effort: string | number | undefined
+  /** The effort the person saved in their settings, read as the session starts: the gate's guess till a request says. */
+  let savedEfforts: SavedEfforts = { byModel: {} }
+  /**
+   * The level a click on the gate picked, not yet sent to the app as `/effort`. It goes when the person next sends a
+   * prompt or runs a command, so the app's redraw for it lands with theirs; a run of clicks sends only the last.
+   */
+  const pendingEffort: PendingEffort = { level: null }
   /** The rate-limit windows as a main turn began, and what the last one took from them. */
   let quotaBefore: readonly LimitWindow[] | null = null
   let turnDelta: readonly QuotaDelta[] = []
@@ -1556,6 +1579,12 @@ export const register: Register = (on, options) => {
       const named = await $.session.model().catch(() => undefined)
       if (model === undefined && typeof named === 'string' && named !== '') model = named
     }
+    try {
+      const [level, perModel] = await Promise.all([$.settings.read({ key: 'effortLevel' } as never), $.settings.read({ key: 'modelSettings' } as never)])
+      savedEfforts = savedEffortsOf(level, perModel)
+    } catch {
+      // No settings read: no guess, as before.
+    }
     // Auto steers only once it has read its saved state: a reload runs this hook unawaited, and until then `auto` is null,
     // so a prompt or a request passes through rather than meeting a controller that thinks Auto is on with no pick.
     try {
@@ -1581,7 +1610,9 @@ export const register: Register = (on, options) => {
         },
         store: { get: key => $.store.get(key), set: async (key, value) => $.store.set(key, value) },
         toast: text => $.ui.toast(text),
-        setAppEffort: level => setAppEffort($, level),
+        setAppEffort: async level => {
+          pendingEffort.level = level
+        },
         ask: async (prompt, current, context) => askHaiku(request => $.model.complete(request), prompt, current, context, contextPercent),
         cfg: autoConfig,
       })
@@ -1817,8 +1848,18 @@ export const register: Register = (on, options) => {
         await express({ mood: 'sleep', priority: PRIORITY.ambient, holdMs: 2500, line: 'lateNight', slots: { time: clockTime(now()) } })
       }
       if (isNamedIn(e.text)) maybeQuip('named')
+      sendPendingEffort($, pendingEffort)
     }
     if (auto && autoConfig.isOn) await judgePrompt($, e, auto)
+    return next(e)
+  })
+
+  // A command the person runs takes the gate's pending `/effort` with it; their own `/effort` replaces it.
+  on('command.run', async ($, e, next) => {
+    if (!NOT_THE_PERSON.has(e.origin?.kind ?? 'unclassified')) {
+      if (e.command === 'effort') pendingEffort.level = null
+      else sendPendingEffort($, pendingEffort)
+    }
     return next(e)
   })
 
@@ -2713,12 +2754,13 @@ export const register: Register = (on, options) => {
 
   /**
    * What the effort gate shows, from its state in `$.state`. Its level is the one the next main-loop request carries,
-   * as Auto would send it on the last model the main loop asked for; nothing before Auto loads or any request. `A` is
+   * as Auto would send it on the last model the main loop asked for; before any request, the saved setting's. `A` is
    * lit while the person has Auto on; the reason says when Auto is paused rather than steering (`Auto.reason`).
    */
   const gateOf = (state: GateState | null, at: number): GateView | null =>
     state && {
-      effort: auto && model !== undefined ? auto.nextEffort(model) : undefined,
+      // Till a request says, the level saved in the settings for this model: a guess, which the first request corrects.
+      effort: (auto && model !== undefined ? auto.nextEffort(model) : undefined) ?? savedEffortFor(savedEfforts, model),
       isAuto: state.isAuto,
       why: auto ? auto.reason(model, at) : '',
       shift: state.shift,

@@ -1,7 +1,7 @@
 // What the effort gate shows, as segments. Pure: no `$`, no colours. The band gives each role its colour and makes
 // the stops and the Auto slot clickable; this file decides only the text, the roles, and what fits.
 //
-//   effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"            full gate, in `full` and `compact`
+//   effort  L ─ M ─ ●H ─ X ─ Mx ┃ A  "multi-file refactor"            full gate, in `full` and `compact`
 //   LMHXM A                                                            mini gate, in `slim` and `minimal`
 
 import { EFFORTS } from './judge.ts'
@@ -67,7 +67,7 @@ export function gateRow(v: GateView, width: number): GateSeg[] {
     }
     stops.push(level === v.effort ? { text: KNOB + STOP[level], role: 'active', level } : { text: STOP[level], role: 'stop', level })
   })
-  const rest: GateSeg[] = [...stops, { text: GAP + '┃ ', role: 'sep' }, { text: 'A', role: v.isAuto ? 'autoOn' : 'auto' }]
+  const rest: GateSeg[] = [...stops, { text: ' ┃ ', role: 'sep' }, { text: 'A', role: v.isAuto ? 'autoOn' : 'auto' }]
   const label: GateSeg[] = [{ text: 'effort', role: 'label' }, { text: GAP, role: 'sep' }]
 
   const reason = v.isAuto ? v.why.replace(/\s+/g, ' ').trim() : ''

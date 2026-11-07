@@ -98,7 +98,7 @@ export type AutoDeps = {
   readState(): Promise<{ pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }>
   store: { get(k: string): Promise<unknown>; set(k: string, v: unknown): Promise<void> }
   toast(t: string): void
-  /** Runs `/effort <level>` for the app, so its own setting follows a click. */
+  /** Hands the app `/effort <level>` (sent with the next thing the person sends), so its own setting follows a click. */
   setAppEffort(level: Effort): Promise<void>
   /** Haiku's verdict on the next message, or null when it didn't answer. */
   ask(prompt: string, current: JudgePick | null, context: string): Promise<Verdict | null>

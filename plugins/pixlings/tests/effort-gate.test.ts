@@ -21,7 +21,7 @@ const view = (over: Partial<Parameters<typeof gateRow>[0]> = {}): Parameters<typ
 
 describe('gateRow: the full gate', () => {
   test('at rest on high with Auto on: label, five stops, the knob on H, the Auto slot and its reason', () => {
-    expect(text(gateRow(view(), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"')
+    expect(text(gateRow(view(), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A  "multi-file refactor"')
   })
 
   test('the knob is on the active stop only: its seg is ● plus the label, role active, with its level', () => {
@@ -56,12 +56,12 @@ describe('gateRow: the full gate', () => {
     const off = gateRow(view({ isAuto: false }), 80)
     expect(off.find((s) => s.text === 'A')?.role).toBe('auto')
     expect(off.some((s) => s.role === 'why')).toBe(false)
-    expect(text(off)).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+    expect(text(off)).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('Auto on with no reason yet draws no empty ""', () => {
-    expect(text(gateRow(view({ why: '' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A')
-    expect(text(gateRow(view({ why: '  \n ' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+    expect(text(gateRow(view({ why: '' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: '  \n ' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('a reason is kept to one line: runs of whitespace and newlines become one space', () => {
@@ -133,7 +133,7 @@ describe('gateRow: the shift arrows', () => {
 
 describe('gateRow: fitting the width', () => {
   const LONG = 'a very long reason that will never fit on one line of the band however wide it is'
-  const BARE = 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A'
+  const BARE = 'effort  L ─ M ─ ●H ─ X ─ Mx ┃ A'
 
   test('a reason too long for the width is dropped whole: no reason and no …, the label stays', () => {
     const segs = gateRow(view({ why: LONG }), 60)
@@ -151,9 +151,9 @@ describe('gateRow: fitting the width', () => {
   test('a reason that just fits is shown whole; one column less and the whole reason goes', () => {
     const whole = text(gateRow(view(), 200))
     expect(whole).toBe(BARE + '  "multi-file refactor"')
-    expect(whole.length).toBe(55)
-    expect(text(gateRow(view(), 55))).toBe(whole)
-    expect(text(gateRow(view(), 54))).toBe(BARE)
+    expect(whole.length).toBe(54)
+    expect(text(gateRow(view(), 54))).toBe(whole)
+    expect(text(gateRow(view(), 53))).toBe(BARE)
   })
 
   test('a long reason shows whole at exactly its width, and not one column short of it', () => {
@@ -162,17 +162,17 @@ describe('gateRow: fitting the width', () => {
     expect(text(gateRow(view({ why: LONG }), whole.length - 1))).toBe(BARE)
   })
 
-  test('a one-letter reason shows at 37 columns, where it fits whole; two letters need 38', () => {
-    expect(text(gateRow(view({ why: 'x' }), 37))).toBe(BARE + '  "x"')
-    expect(text(gateRow(view({ why: 'x' }), 36))).toBe(BARE)
-    expect(text(gateRow(view({ why: 'xy' }), 37))).toBe(BARE)
-    expect(text(gateRow(view({ why: 'xy' }), 38))).toBe(BARE + '  "xy"')
+  test('a one-letter reason shows at 36 columns, where it fits whole; two letters need 37', () => {
+    expect(text(gateRow(view({ why: 'x' }), 36))).toBe(BARE + '  "x"')
+    expect(text(gateRow(view({ why: 'x' }), 35))).toBe(BARE)
+    expect(text(gateRow(view({ why: 'xy' }), 36))).toBe(BARE)
+    expect(text(gateRow(view({ why: 'xy' }), 37))).toBe(BARE + '  "xy"')
   })
 
-  test('a reason is measured as shown, its whitespace collapsed: two lines fit at 45, not 44', () => {
+  test('a reason is measured as shown, its whitespace collapsed: two lines fit at 44, not 43', () => {
     const why = ' two\n  lines '
-    expect(text(gateRow(view({ why }), 45))).toBe(BARE + '  "two lines"')
-    expect(text(gateRow(view({ why }), 44))).toBe(BARE)
+    expect(text(gateRow(view({ why }), 44))).toBe(BARE + '  "two lines"')
+    expect(text(gateRow(view({ why }), 43))).toBe(BARE)
   })
 
   test('a reason with an emoji is shown whole or not at all, never half of it', () => {
@@ -184,20 +184,20 @@ describe('gateRow: fitting the width', () => {
 
   test('at 30 columns the label goes, and the stops and A stay', () => {
     const segs = gateRow(view({ why: LONG }), 30)
-    expect(text(segs)).toBe('L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+    expect(text(segs)).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
     expect(text(segs).length).toBeLessThanOrEqual(30)
     expect(segs.some((s) => s.role === 'label')).toBe(false)
   })
 
-  test('the label goes only after the reason has, and the label fits at 32 but not 31', () => {
-    expect(text(gateRow(view({ why: LONG }), 32))).toBe(BARE)
-    expect(text(gateRow(view({ why: LONG }), 31))).toBe('L ─ M ─ ●H ─ X ─ Mx  ┃ A')
-    expect(text(gateRow(view({ why: 'x' }), 31))).toBe('L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+  test('the label goes only after the reason has, and the label fits at 31 but not 30', () => {
+    expect(text(gateRow(view({ why: LONG }), 31))).toBe(BARE)
+    expect(text(gateRow(view({ why: LONG }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: 'x' }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('with Auto off the label goes at the same width', () => {
-    expect(text(gateRow(view({ isAuto: false }), 32))).toBe(BARE)
-    expect(text(gateRow(view({ isAuto: false }), 31))).toBe('L ─ M ─ ●H ─ X ─ Mx  ┃ A')
+    expect(text(gateRow(view({ isAuto: false }), 31))).toBe(BARE)
+    expect(text(gateRow(view({ isAuto: false }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('at every width the text fits whenever the stops and A fit, the stops and A always stay, and nothing is cut', () => {
