@@ -4,7 +4,7 @@
 import { describe, expect } from 'claude-code/testing'
 
 import type { PixlingsEffortPick, PixlingsEffortShift } from '../types'
-import { createAuto, planPrompt, readAutoConfig, readStoredPick, settle, SWITCHED_MS } from '../hooks/effort/auto.ts'
+import { AUTO_ON_BRAIN_MS, createAuto, planPrompt, readAutoConfig, readStoredPick, settle, SWITCHED_MS } from '../hooks/effort/auto.ts'
 import type { AutoConfig, AutoDeps, PromptFacts } from '../hooks/effort/auto.ts'
 import type { Verdict } from '../hooks/effort/haiku.ts'
 import type { Effort, Pick } from '../hooks/effort/judge.ts'
@@ -451,6 +451,24 @@ describe('createAuto', () => {
     expect(f.typed).toEqual(['low'])
     // A pick of the person's draws no shift of its own.
     expect(auto.view().shift).toBe(judged)
+  })
+
+  test('turning Auto on shows the brain for a second; turning it off does not', async () => {
+    const f = fake()
+    const auto = createAuto(f.deps)
+    await auto.load()
+    // On as it loads: the first press turns it off, with no brain.
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(false)
+    expect(auto.view().isJudging).toBe(false)
+    f.clock.now = 2_000
+    await auto.toggleAuto()
+    expect(auto.view().isAuto).toBe(true)
+    expect(auto.view().isJudging).toBe(true)
+    f.clock.now = 2_000 + AUTO_ON_BRAIN_MS - 1
+    expect(auto.view().isJudging).toBe(true)
+    f.clock.now = 2_000 + AUTO_ON_BRAIN_MS
+    expect(auto.view().isJudging).toBe(false)
   })
 
   test('toggleAuto', async () => {

@@ -12,6 +12,8 @@ import type { Effort, ModelKey, Pick as JudgePick } from './judge.ts'
 
 /** How long the gate draws Auto's change of level as arrows, and its reason beside them (Effortless's 2.5s, longer). */
 export const SWITCHED_MS = 10_000
+/** How long the judge's brain shows when the person turns Auto on: a nod that Auto is thinking for them again. */
+export const AUTO_ON_BRAIN_MS = 1000
 
 const LABELS: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'XHigh', max: 'Max' }
 
@@ -117,6 +119,8 @@ export function createAuto(deps: AutoDeps) {
   let isAuto = true
   let shift: PixlingsEffortShift = null
   let isJudging = false
+  /** The brain shows till then (ms on the clock) after the person turns Auto on. */
+  let brainUntil = 0
   // A lower level for a message typed mid-turn waits for the turn to end (Effortless heldPick).
   let heldPick: Chosen | null = null
   // Haiku didn't answer a message typed mid-turn while the turn ran above medium. Medium waits for the turn to end, as a
@@ -372,6 +376,7 @@ export function createAuto(deps: AutoDeps) {
     async toggleAuto(): Promise<void> {
       const turnOn = !isAuto
       isAuto = turnOn
+      if (turnOn) brainUntil = now() + AUTO_ON_BRAIN_MS
       await Promise.all([quiet(() => deps.setState({ isAuto: turnOn })), keepAuto(turnOn)])
     },
 
@@ -402,7 +407,7 @@ export function createAuto(deps: AutoDeps) {
     },
 
     view(): { pick: PixlingsEffortPick; isAuto: boolean; shift: PixlingsEffortShift; isJudging: boolean } {
-      return { pick, isAuto, shift, isJudging }
+      return { pick, isAuto, shift, isJudging: isJudging || now() < brainUntil }
     },
   }
 }
