@@ -1,12 +1,16 @@
 // The effort gate drawn: gate.ts's segments as Texts, the stops and the Auto slot as plain Buttons that look like
 // text. One drawing for the band's row, its mini gate, and the room, on every surface.
 
-import type { ButtonProps, ElementConstructor, RenderElement, TextProps } from 'claude-code'
+import type { BoxProps, ButtonProps, ElementConstructor, RenderElement, TextProps } from 'claude-code'
 
 import type { GateSeg } from './gate.ts'
 import type { Effort } from './judge.ts'
 
-export type GateKit = { readonly Text: ElementConstructor<TextProps>; readonly Button: ElementConstructor<ButtonProps> }
+export type GateKit = {
+  readonly Box: ElementConstructor<BoxProps>
+  readonly Text: ElementConstructor<TextProps>
+  readonly Button: ElementConstructor<ButtonProps>
+}
 
 /** What a press on the gate does; null before Auto has loaded, when a press does nothing. */
 export type GateActions = { readonly pick: (level: Effort) => void; readonly toggle: () => void } | null
@@ -17,24 +21,26 @@ export type GateActions = { readonly pick: (level: Effort) => void; readonly tog
  */
 export type GatePaint = { readonly color: string; readonly ink: string; readonly isAutoFocused?: boolean }
 
-/** The scope the Auto slot's hover colours answer to, so they need no keyed Box around the gate. */
-const AUTO_SCOPE = 'pixlings-effort-auto'
-
 /** The level in use and the arrows of a shift in the accent colour; the rest dim. */
 const paintOf = (seg: GateSeg, paint: GatePaint): TextProps =>
   seg.role === 'active' || seg.role === 'arrow' ? { color: paint.color } : { dimColor: true }
 
+/** The bright letter of a lit A under the pointer. */
+const LIT_HOVER_INK = '#ffffff'
+
 /**
  * Auto's slot: lit like a key while on, on the accent in dark ink; dim while off. The surface inverts a Button under
- * the pointer and under the focus ring, which would put out a lit A and light a dim one, so each look is also given
- * swapped (as the band's door does): under the pointer by `hover`, under the ring by drawing it swapped. Inverted, it
- * looks as it rests, whether on or off; under the pointer it is underlined, so it still answers.
+ * the pointer and under the focus ring, which would put out a lit A and light a dim one, so every look there is given
+ * swapped (as the band's door does): under the pointer by `hover`, which the keyed Box around the Button heats, and
+ * under the ring by drawing its resting look swapped. Under the pointer, a lit A keeps the accent and its letter
+ * brightens; a dim one lights its letter in the accent, on no background. `inverseText` stands in, swapped, for the
+ * terminal's own ground, which no colour names.
  */
 const autoPaintOf = (isOn: boolean, paint: GatePaint): TextProps => {
   const rest: TextProps = isOn ? { color: paint.ink, backgroundColor: paint.color } : { dimColor: true }
-  // Off at rest is the dim ink on the terminal's own ground: swapped, `inverseText` stands in for that ground.
-  const swapped = isOn ? { color: paint.color, backgroundColor: paint.ink } : { color: 'inverseText', backgroundColor: 'inactive', dimColor: false }
-  return { ...(paint.isAutoFocused ? swapped : rest), hover: { scope: AUTO_SCOPE, ...swapped, underline: true } }
+  const restSwapped: TextProps = isOn ? { color: paint.color, backgroundColor: paint.ink } : { color: 'inverseText', backgroundColor: 'inactive', dimColor: false }
+  const hover = isOn ? { color: paint.color, backgroundColor: LIT_HOVER_INK } : { color: 'inverseText', backgroundColor: paint.color, dimColor: false }
+  return { ...(paint.isAutoFocused ? restSwapped : rest), hover }
 }
 
 /** The gate's segments as elements, in a row's order. A stop is keyed `effort-<level>`, the Auto slot `effort-auto`. */
@@ -47,7 +53,9 @@ export function gateElements(kit: GateKit, segs: readonly GateSeg[], paint: Gate
       return kit.Button({ key: `effort-${level}`, label: `effort ${level}`, plain: true, onPress: () => act?.pick(level), children: [text] })
     }
     if (seg.role === 'auto' || seg.role === 'autoOn') {
-      return kit.Button({ key: 'effort-auto', label: 'Auto effort', plain: true, onPress: () => act?.toggle(), children: [text] })
+      // Keyed, so the pointer on the slot heats its Text's `hover`: a Text inside a Button cannot heat a scope itself.
+      const button = kit.Button({ key: 'effort-auto', label: 'Auto effort', plain: true, onPress: () => act?.toggle(), children: [text] })
+      return kit.Box({ key: 'effort-auto-slot', flexShrink: 0, children: [button] })
     }
     return text
   })

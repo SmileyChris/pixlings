@@ -2773,7 +2773,7 @@ export const register: Register = (on, options) => {
     const mini = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button']) =>
       gate ? (
         <Box marginLeft={2} flexShrink={0} flexDirection="row">
-          {gateElements({ Text, Button }, miniGate(gate), { color, ink: CARD_FILL, isAutoFocused }, acts)}
+          {gateElements({ Box, Text, Button }, miniGate(gate), { color, ink: CARD_FILL, isAutoFocused }, acts)}
         </Box>
       ) : null
     const at = now()
@@ -2920,7 +2920,7 @@ export const register: Register = (on, options) => {
       if (piece.kind === 'gate' || piece.kind === 'miniGate') {
         if (!gate) return []
         if (piece.kind === 'miniGate') return [mini(Box, Text, Button)]
-        return gateSegs ? gateElements({ Text, Button }, gateSegs, { color, ink: CARD_FILL, isAutoFocused }, acts) : []
+        return gateSegs ? gateElements({ Box, Text, Button }, gateSegs, { color, ink: CARD_FILL, isAutoFocused }, acts) : []
       }
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
