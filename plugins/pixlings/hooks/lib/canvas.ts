@@ -61,6 +61,8 @@ export type FrameInput = {
   readonly isFlipped?: boolean
   /** Plan mode: the propeller thinking cap, in place of the worn hat. */
   readonly hasCap?: boolean
+  /** Auto effort's judge is deciding: a brain wiggles on the head, in place of the cap or hat. */
+  readonly isJudging?: boolean
   /** The context window is nearly full: a bead of sweat runs down the brow. */
   readonly isSweating?: boolean
   /** Milliseconds into a compaction, squished under the press; null or absent when none runs. */
@@ -586,6 +588,18 @@ const drawCap = (p: Pixels, s: Species, ox: number, oy: number, t: number): void
   stamp(p, ox + hx - 3, oy + hy - CAP_LIFT, [pick(CAP_SPIN, step(t, 90)), ...CAP_DOME], CAP_COLORS)
 }
 
+/** The judge's brain: two pink lobes and their folds, sat where the cap sits. */
+const BRAIN = ['.PDPDP.', 'PHPPDPP', 'PPDPPDP', '.DPDPP.']
+const BRAIN_COLORS: Readonly<Record<string, number>> = { P: 0xff9ec8, D: 0xc8578f, H: 0xffe0ee }
+/** How long the brain rests at each end of its wiggle. */
+export const BRAIN_WIGGLE_MS = 320
+
+/** The brain wiggles a pixel aside and back while the judge thinks. */
+const drawBrain = (p: Pixels, s: Species, ox: number, oy: number, t: number): void => {
+  const [hx, hy] = s.head
+  stamp(p, ox + hx - 3 + (step(t, BRAIN_WIGGLE_MS) % 2), oy + hy - CAP_LIFT, BRAIN, BRAIN_COLORS)
+}
+
 const BEAD = ['.D', 'DW', 'DD']
 
 /** A bead of sweat forms at the brow beside the far eye, runs down, and comes again. */
@@ -963,7 +977,7 @@ export const renderFrame = (input: FrameInput): Pixels => {
         ? { ...pose(mood, t), dy: 0 }
         : pose(mood, t)
   const { dx, eyes, mouth, hasCheeks } = look
-  const dy = Math.max(look.dy, -headroom(input.species, layout.y, input.hat, input.hasCap))
+  const dy = Math.max(look.dy, -headroom(input.species, layout.y, input.hat, input.hasCap || input.isJudging))
   const ox = spriteX + dx
   const oy = layout.y + dy
   const eyeColor = (input.isShiny && s.shinyEyeColor) || s.eyeColor
@@ -992,9 +1006,10 @@ export const renderFrame = (input: FrameInput): Pixels => {
   }
   // Sad, the rain cloud hangs in front of any hat, but behind the thinking cap.
   const isRaining = !isScaled && mood === 'sad'
-  if (input.hasCap) {
+  if (input.isJudging || input.hasCap) {
     if (isRaining) drawCloud(p, spriteX, s)
-    drawCap(layer, s, ox, oy, t)
+    if (input.isJudging) drawBrain(layer, s, ox, oy, t)
+    else drawCap(layer, s, ox, oy, t)
   } else {
     if (input.isBlooming || (s.id === 'cactus' && (mood === 'celebrate' || mood === 'love'))) {
       drawBloom(layer, ox, oy, s)

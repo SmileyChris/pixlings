@@ -813,7 +813,7 @@ describe('the Auto slot lit like a key', () => {
 describe('the Auto slot under the pointer and the focus ring', () => {
   // The surface inverts a Button under the pointer and under the ring: A's colours are given swapped there, so
   // inverted it looks as it rests, lit while on and dim while off.
-  test('under the pointer, a lit A keeps the accent with a bright letter; a dim one lights its letter, no background', { options: { band: 'full', roam: false } }, async ($, on) => {
+  test('under the pointer, a lit A stays lit, bold and underlined; a dim one lights to the full text colour, bold', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock } = host(on, ['low'])
     await $.session.start(START)
     await clock.advance(3000)
@@ -822,8 +822,8 @@ describe('the Auto slot under the pointer and the focus ring', () => {
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     const lit = await autoLetter(ui)
     const color = lit?.props?.['backgroundColor']
-    // Given swapped, as the surface inverts it: the accent behind, the letter white.
-    expect(hoverOf(lit!)).toEqual({ color, backgroundColor: '#ffffff' })
+    // Given swapped, as the surface inverts it: the accent behind, the dark ink, by weight.
+    expect(hoverOf(lit!)).toEqual({ color, backgroundColor: KEY_INK, bold: true, underline: true })
     // Heated by a keyed Box around the Button: a Text inside a Button cannot heat a hover itself.
     const slot = withAncestors(await ui.drawn()).find(({ node }) => node.type === 'Button' && keyOf(node) === 'effort-auto')!
     expect(slot.above.some(n => n.type === 'Box' && keyOf(n) === 'effort-auto-slot')).toBe(true)
@@ -832,7 +832,7 @@ describe('the Auto slot under the pointer and the focus ring', () => {
     await ui.redraw()
     const dim = await autoLetter(ui)
     expect(dim?.props?.['dimColor']).toBe(true)
-    expect(hoverOf(dim!)).toEqual({ color: 'inverseText', backgroundColor: color, dimColor: false })
+    expect(hoverOf(dim!)).toEqual({ color: 'inverseText', backgroundColor: 'text', dimColor: false, bold: true })
     await ui.unmount()
   })
 
