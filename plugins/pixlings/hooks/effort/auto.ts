@@ -10,8 +10,8 @@ import type { Verdict } from './haiku.ts'
 import { bounded, cacheSafe, EFFORTS, helperFloor, keepsEffort, MODELS, namedEffort, tipped, withAttachments, withMidTurn } from './judge.ts'
 import type { Effort, ModelKey, Pick as JudgePick } from './judge.ts'
 
-/** How long the gate draws Auto's change of level as arrows (Effortless SWITCHED_MS). */
-export const SWITCHED_MS = 2500
+/** How long the gate draws Auto's change of level as arrows, and its reason beside them (Effortless's 2.5s, longer). */
+export const SWITCHED_MS = 10_000
 
 const LABELS: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'XHigh', max: 'Max' }
 
@@ -158,14 +158,18 @@ export function createAuto(deps: AutoDeps) {
   const keep = (key: 'effortAuto' | 'effortPick', value: unknown): Promise<void> => (isStoodDown ? Promise.resolve() : quiet(() => deps.store.set(key, value)))
   const keepAuto = (on: boolean) => keep('effortAuto', on)
 
-  /** The pick in force from now on. A change of level Auto made is drawn as a shift for a moment (Effortless choose). */
+  /**
+   * The pick in force from now on. Each level Auto chooses is drawn as a shift for a moment (Effortless choose), its
+   * reason beside it: arrows from the level before, the pick's or else the app's as last seen, when it moved; none when
+   * it kept the level or nothing was known before it.
+   */
   const choose = async (next: Chosen, also: { isAuto?: boolean } = {}) => {
     pickCarried = false
-    const before = pick
+    const from = pick?.effort ?? engineEffort ?? next.effort
     pick = next
-    const moved = next.by !== 'manual' && before !== null && before.effort !== next.effort
-    if (moved) shift = { from: before.effort, to: next.effort, until: now() + SWITCHED_MS }
-    await Promise.all([quiet(() => deps.setState({ ...also, pick: next, ...(moved ? { shift } : {}) })), keep('effortPick', next)])
+    const isAutos = next.by !== 'manual'
+    if (isAutos) shift = { from, to: next.effort, until: now() + SWITCHED_MS }
+    await Promise.all([quiet(() => deps.setState({ ...also, pick: next, ...(isAutos ? { shift } : {}) })), keep('effortPick', next)])
   }
 
   /** Mid-turn, a lower level would cut the running task's remaining steps, so it waits; a higher one helps, so it applies. */
@@ -386,13 +390,15 @@ export function createAuto(deps: AutoDeps) {
 
     /**
      * What the gate says after the A, which it shows only while Auto is on. While Effortless steers, or on a model
-     * Auto does not steer, that Auto is paused; else the reason for the level Auto chose or was told. A level the person
-     * picked, or Haiku not answering, gives none: Auto is not the one choosing until Haiku next judges.
+     * Auto does not steer, that Auto is paused, for as long as it is. Else the reason for the level Auto chose, only
+     * while its shift lasts (at `at`, before the shift's `until`), so it clears with the arrows. A level the person
+     * picked, or Haiku not answering, gives none.
      */
-    reason(modelId: string | undefined): string {
+    reason(modelId: string | undefined, at: number): string {
       if (isStoodDown) return 'paused: Effortless is installed'
       if (modelId !== undefined && !cacheSafe(modelId)) return 'paused on this model'
-      return pick && pick.by !== 'manual' ? pick.why : ''
+      const isMoving = shift !== null && at < shift.until
+      return isMoving && pick && pick.by !== 'manual' ? pick.why : ''
     },
 
     view(): { pick: PixlingsEffortPick; isAuto: boolean; shift: PixlingsEffortShift; isJudging: boolean } {

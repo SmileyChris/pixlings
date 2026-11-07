@@ -234,7 +234,8 @@ describe('the effort gate in the band', () => {
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     // The host answers every `ui.invalidate` itself, so only the state's own redraw can show the verdict here.
     await $.prompt.submit({ text: 'refactor the auth module', origin: COMPOSER } as never)
-    expect(await gateText(ui)).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  "multi-file refactor"')
+    // Up from the app's medium: arrows, and the reason with them.
+    expect(await gateText(ui)).toBe('effort  L ─ M → H → ●X ─ Mx  ┃ A  "multi-file refactor"')
     await ui.unmount()
   })
 
@@ -273,7 +274,7 @@ describe('the effort gate in the band', () => {
     expect(toasts.filter(t => t.includes('Effortless'))).toEqual(["Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."])
   })
 
-  test('after a reload the gate shows the level in force before the next request', { options: { band: 'full', roam: false } }, async ($, on) => {
+  test('after a reload the gate shows the level in force before the next request, its reason long gone', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock } = host(on)
     // The engine's state outlives the module's reload: Auto on, and the level it chose before.
     const kept = new Map<string, unknown>([
@@ -289,7 +290,7 @@ describe('the effort gate in the band', () => {
     await clock.advance(3000)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
-      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"')
+      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A')
       await ui.unmount()
     }
   })
@@ -529,7 +530,7 @@ describe('the effort gate in the band', () => {
       expect(await ui.findAll({ type: 'Text', text: ' ← ' }), surface).toHaveLength(2)
       await ui.unmount()
     }
-    await clock.advance(3000)
+    await clock.advance(11_000)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
       expect(await ui.find({ type: 'Text', text: ' ← ' }), surface).toBeUndefined()
@@ -550,8 +551,9 @@ describe('the effort gate in the band', () => {
     await clock.advance(3000)
     await ask($, 'refactor the auth module')
     await ask($, 'what is a monad')
-    expect(shifts).toHaveLength(1)
-    const until = shifts[0]!.until
+    // Each judgement draws a shift: the arrows are the last one's, high down to low.
+    expect(shifts).toHaveLength(2)
+    const until = shifts[1]!.until
     // The terminal blits its frames and redraws only when asked, so the gate's own timer is all that can fade them.
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
@@ -568,7 +570,8 @@ describe('the effort gate in the band', () => {
     expect(fade.length).toBeGreaterThan(0)
     expect(Math.abs(fade[0]! - until)).toBeLessThan(1000)
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
-    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  "judged low"')
+    // The reason goes with the arrows.
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A')
     // And then it is done: no more redraws for it.
     const settled = invalidated.length
     await clock.advance(3000)
@@ -585,9 +588,9 @@ describe('the effort gate in the band', () => {
     await ask($, 'what is a monad')
     const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
-    await clock.advance(3500)
+    await clock.advance(11_500)
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
-    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  "judged low"')
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A')
     await ui.unmount()
   })
 
@@ -670,12 +673,13 @@ describe('the effort gate in the band', () => {
   }
 
   test('the gate row widens alone: the rows around it keep the column’s 56 columns and what they say', { options: { band: 'full', roam: false } }, async ($, on) => {
-    const { clock } = host(on, [{ effort: 'high', why: 'refactor across six files' }])
+    const { clock } = host(on, [{ effort: 'high', why: 'refactor across six files' }, { effort: 'high', why: 'refactor across six files' }])
     await $.session.start(START)
     await clock.advance(3000)
     await ask($, 'refactor the auth module')
-    // Its speech over, so the column holds its rows alone.
+    // Its speech over, so the column holds its rows alone; then a prompt judged again, so its reason shows.
     await clock.advance(20_000)
+    await $.prompt.submit({ text: 'and the tests', origin: COMPOSER } as never)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
       const tree = await ui.drawn()

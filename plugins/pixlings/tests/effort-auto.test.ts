@@ -191,10 +191,10 @@ describe('createAuto', () => {
     f.clock.now = 5_000
     await auto.onPrompt(facts())
     expect(auto.view().pick).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
-    expect(auto.view().shift).toEqual({ from: 'medium', to: 'xhigh', until: 5_000 + 2500 })
-    expect(SWITCHED_MS).toBe(2500)
+    expect(auto.view().shift).toEqual({ from: 'medium', to: 'xhigh', until: 5_000 + 10_000 })
+    expect(SWITCHED_MS).toBe(10_000)
     expect(f.state.pick).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
-    expect(f.state.shift).toEqual({ from: 'medium', to: 'xhigh', until: 7_500 })
+    expect(f.state.shift).toEqual({ from: 'medium', to: 'xhigh', until: 15_000 })
     expect(f.stored.get('effortPick')).toEqual({ effort: 'xhigh', why: 'big refactor', by: 'haiku' })
   })
 
@@ -442,13 +442,15 @@ describe('createAuto', () => {
   test('pickLevel', async () => {
     const f = fake()
     const auto = await withPick(f, 'high')
+    const judged = auto.view().shift
     await auto.pickLevel('low')
     expect(auto.view().isAuto).toBe(false)
     expect(f.stored.get('effortAuto')).toBe(false)
     expect(auto.view().pick).toEqual({ effort: 'low', why: 'your pick', by: 'manual' })
     expect(f.state.pick).toEqual({ effort: 'low', why: 'your pick', by: 'manual' })
     expect(f.typed).toEqual(['low'])
-    expect(auto.view().shift).toBeNull()
+    // A pick of the person's draws no shift of its own.
+    expect(auto.view().shift).toBe(judged)
   })
 
   test('toggleAuto', async () => {
@@ -696,38 +698,57 @@ describe('nextEffort: the level the next main-loop request carries', () => {
   })
 })
 
-describe('reason: what the gate says after `auto:`', () => {
+describe('reason: what the gate says after the A', () => {
   const opus = 'claude-opus-5-5'
 
-  test('the reason for a level Auto chose or was told', async () => {
-    const auto = await withPick(fake(), 'high')
-    expect(auto.reason(opus)).toBe('judged')
+  test('the reason for a level Auto moved to, while its arrows show, and gone with them', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'medium')
+    f.verdicts.push({ effort: 'xhigh', why: 'big refactor' })
+    f.clock.now = 5_000
+    await auto.onPrompt(facts())
+    expect(auto.reason(opus, 5_000)).toBe('big refactor')
+    expect(auto.reason(opus, 5_000 + SWITCHED_MS - 1)).toBe('big refactor')
+    expect(auto.reason(opus, 5_000 + SWITCHED_MS)).toBe('')
+    // A level named in the prompt moves it too, with its own reason.
+    f.clock.now = 30_000
     await auto.onPrompt(facts({ text: 'max effort please' }))
-    expect(auto.reason(opus)).toBe('you asked for it')
+    expect(auto.reason(opus, 30_000)).toBe('you asked for it')
   })
 
-  test('on a model Auto does not steer, that it is paused there', async () => {
-    const auto = await withPick(fake(), 'high')
-    expect(auto.reason('claude-fable-5-1')).toBe('paused on this model')
-    expect(auto.reason('claude-haiku-5-5')).toBe('paused on this model')
-    // No main-loop model known yet: the pick's own reason.
-    expect(auto.reason(undefined)).toBe('judged')
+  test('a judgement that keeps the level shows its reason for as long, with no arrows', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    f.clock.now = 60_000
+    f.verdicts.push({ effort: 'high', why: 'still hard' })
+    await auto.onPrompt(facts())
+    expect(auto.view().shift).toEqual({ from: 'high', to: 'high', until: 60_000 + SWITCHED_MS })
+    expect(auto.reason(opus, 60_000)).toBe('still hard')
+    expect(auto.reason(opus, 60_000 + SWITCHED_MS)).toBe('')
+  })
+
+  test('on a model Auto does not steer, that it is paused there, for as long as it is', async () => {
+    const f = fake()
+    const auto = await withPick(f, 'high')
+    expect(auto.reason('claude-fable-5-1', f.clock.now)).toBe('paused on this model')
+    expect(auto.reason('claude-haiku-5-5', f.clock.now + 60_000)).toBe('paused on this model')
   })
 
   test('none for a level the person picked or Haiku not answering, until Haiku judges again', async () => {
     const f = fake()
     const auto = await withPick(f, 'high')
+    const at = f.clock.now
     await auto.pickLevel('low')
     await auto.toggleAuto()
-    expect(auto.reason(opus)).toBe('')
+    expect(auto.reason(opus, at)).toBe('')
     // Haiku doesn't answer; the person turns Auto back on.
     await auto.onPrompt(facts())
     expect(auto.view().pick?.why).toBe("Haiku didn't answer")
     await auto.toggleAuto()
-    expect(auto.reason(opus)).toBe('')
+    expect(auto.reason(opus, at)).toBe('')
     f.verdicts.push({ effort: 'xhigh', why: 'big refactor' })
     await auto.onPrompt(facts())
-    expect(auto.reason(opus)).toBe('big refactor')
+    expect(auto.reason(opus, at)).toBe('big refactor')
   })
 })
 
@@ -768,8 +789,8 @@ describe('standing down while Effortless is installed', () => {
     auto.standDown()
     auto.requestEffort({ modelId: opus, effort: 'low' })
     expect(auto.nextEffort(opus)).toBe('low')
-    expect(auto.reason(opus)).toBe('paused: Effortless is installed')
-    expect(auto.reason('claude-fable-5-1')).toBe('paused: Effortless is installed')
+    expect(auto.reason(opus, 0)).toBe('paused: Effortless is installed')
+    expect(auto.reason('claude-fable-5-1', 0)).toBe('paused: Effortless is installed')
   })
 
   test('a click does what it shows for this session, and stores nothing', async () => {

@@ -2720,7 +2720,7 @@ export const register: Register = (on, options) => {
     state && {
       effort: auto && model !== undefined ? auto.nextEffort(model) : undefined,
       isAuto: state.isAuto,
-      why: auto ? auto.reason(model) : '',
+      why: auto ? auto.reason(model, at) : '',
       shift: state.shift,
       now: at,
     }
