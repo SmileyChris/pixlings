@@ -385,7 +385,7 @@ export function createAuto(deps: AutoDeps) {
     },
 
     /**
-     * What the gate says after `auto:`, which it shows only while Auto is on. While Effortless steers, or on a model
+     * What the gate says after the A, which it shows only while Auto is on. While Effortless steers, or on a model
      * Auto does not steer, that Auto is paused; else the reason for the level Auto chose or was told. A level the person
      * picked, or Haiku not answering, gives none: Auto is not the one choosing until Haiku next judges.
      */

@@ -215,7 +215,7 @@ describe('the effort gate in the band', () => {
     await ask($, 'refactor the auth module')
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
-      expect(await ui.find({ type: 'Text', text: 'auto: "judged high"' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '"judged high"' }), surface).toBeDefined()
       await ui.unmount()
     }
   })
@@ -234,7 +234,7 @@ describe('the effort gate in the band', () => {
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
     // The host answers every `ui.invalidate` itself, so only the state's own redraw can show the verdict here.
     await $.prompt.submit({ text: 'refactor the auth module', origin: COMPOSER } as never)
-    expect(await gateText(ui)).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  auto: "multi-file refactor"')
+    expect(await gateText(ui)).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  "multi-file refactor"')
     await ui.unmount()
   })
 
@@ -249,7 +249,7 @@ describe('the effort gate in the band', () => {
       for (const surface of SURFACES) {
         const ui = await $.ui.mount({ ...BAND, surface })
         expect(await isAutoLit(ui), surface).toBe(true)
-        expect(await gateText(ui), surface).toMatch(/ ┃ A {2}auto: "paused on this model"$/)
+        expect(await gateText(ui), surface).toMatch(/ ┃ A {2}"paused on this model"$/)
         expect(await ui.find({ type: 'Text', text: 'multi-file refactor' }), surface).toBeUndefined()
         await ui.unmount()
       }
@@ -267,7 +267,7 @@ describe('the effort gate in the band', () => {
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
       expect(await isAutoLit(ui), surface).toBe(true)
-      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  auto: "paused: Effortless is installed"')
+      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ H ─ ●X ─ Mx  ┃ A  "paused: Effortless is installed"')
       await ui.unmount()
     }
     expect(toasts.filter(t => t.includes('Effortless'))).toEqual(["Pixlings' Auto effort is paused while Effortless is installed. Uninstall Effortless to use it here."])
@@ -289,7 +289,7 @@ describe('the effort gate in the band', () => {
     await clock.advance(3000)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
-      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+      expect(await gateText(ui), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"')
       await ui.unmount()
     }
   })
@@ -405,7 +405,7 @@ describe('the effort gate in the band', () => {
       expect(await shown.find({ type: 'Text', text: '●H' }), surface).toBeDefined()
       // Auto is off: its slot is dim, and no reason is given.
       expect((await shown.find({ type: 'Text', text: 'A' }))?.props['dimColor'], surface).toBe(true)
-      expect(await shown.find({ type: 'Text', text: /^auto: / }), surface).toBeUndefined()
+      expect(await shown.find({ type: 'Text', text: /^"/ }), surface).toBeUndefined()
       await shown.unmount()
     }
     // The manual pick goes out with the next request.
@@ -568,7 +568,7 @@ describe('the effort gate in the band', () => {
     expect(fade.length).toBeGreaterThan(0)
     expect(Math.abs(fade[0]! - until)).toBeLessThan(1000)
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
-    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  auto: "judged low"')
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  "judged low"')
     // And then it is done: no more redraws for it.
     const settled = invalidated.length
     await clock.advance(3000)
@@ -587,7 +587,7 @@ describe('the effort gate in the band', () => {
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(2)
     await clock.advance(3500)
     expect(await ui.findAll({ type: 'Text', text: ' ← ' })).toHaveLength(0)
-    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  auto: "judged low"')
+    expect(await gateText(ui)).toBe('effort  ●L ─ M ─ H ─ X ─ Mx  ┃ A  "judged low"')
     await ui.unmount()
   })
 
@@ -636,15 +636,15 @@ describe('the effort gate in the band', () => {
     }
   })
 
-  test('a reason that does not fit whole is left off, never cut: the live width that showed auto: "Rea…"', { options: { band: 'full', roam: false } }, async ($, on) => {
+  test('a reason that does not fit whole is left off, never cut: the live width that showed "Rea…"', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock } = host(on, ['high'])
     await $.session.start(START)
     await clock.advance(3000)
     await ask($, 'refactor the auth module')
-    // The gate's row has the band's columns past the 22-column sprite, less 4: whole, its reason takes 53.
-    const whole = 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "judged high"'
+    // The gate's row has the band's columns past the 22-column sprite, less 4: whole, its reason takes 47.
+    const whole = 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "judged high"'
     for (const surface of SURFACES) {
-      for (const [columns, drawn] of [[79, whole], [78, 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A']] as const) {
+      for (const [columns, drawn] of [[73, whole], [72, 'effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A']] as const) {
         const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: columns }, viewport: { columns, rows: 60 }, surface })
         const text = strings(gateRowOf(await ui.drawn())!).join('')
         expect(text, `${surface} ${columns}`).toBe(drawn)
@@ -663,14 +663,14 @@ describe('the effort gate in the band', () => {
       for (const surface of SURFACES) {
         // 110 columns: the column beside the 22-column sprite stops at 56, which leaves the reason 14; the band has 84.
         const ui = await $.ui.mount({ ...BAND, surface })
-        expect(strings(gateRowOf(await ui.drawn())!).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+        expect(strings(gateRowOf(await ui.drawn())!).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"')
         await ui.unmount()
       }
     })
   }
 
   test('the gate row widens alone: the rows around it keep the column’s 56 columns and what they say', { options: { band: 'full', roam: false } }, async ($, on) => {
-    const { clock } = host(on, [{ effort: 'high', why: 'multi-file refactor' }])
+    const { clock } = host(on, [{ effort: 'high', why: 'refactor across six files' }])
     await $.session.start(START)
     await clock.advance(3000)
     await ask($, 'refactor the auth module')
@@ -689,7 +689,7 @@ describe('the effort gate in the band', () => {
       expect(others.map(row => strings(row).join('')), surface).toEqual(['Quackers Lv 3 · Duck ★', '██░░░░░░░░░░ 21/113  ', '⏳ cache ~4:42 · 0% cached · opus 5.5'])
       // The columns each row is laid out in: its own width, else the scope's.
       expect(others.map(row => row.props?.['width'] ?? stats.props?.['width']), surface).toEqual([56, 56, 56])
-      expect(strings(gate).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+      expect(strings(gate).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "refactor across six files"')
       // The column grows as far as that row's 61 columns, not to all the band has; the card's scope keeps the 56.
       expect(column.props?.['width'], surface).toBe(61)
       expect(gate.props?.['width'], surface).toBe(61)
@@ -925,7 +925,7 @@ describe('the effort gate in the room', () => {
     await ask($, 'refactor the auth module')
     for (const surface of SURFACES) {
       const ui = await $.ui.mount(room(surface))
-      expect(await ui.find({ type: 'Text', text: 'auto: "multi-file refactor"' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '"multi-file refactor"' }), surface).toBeDefined()
       await ui.unmount()
     }
   })

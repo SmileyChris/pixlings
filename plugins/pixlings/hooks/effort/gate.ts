@@ -1,7 +1,7 @@
 // What the effort gate shows, as segments. Pure: no `$`, no colours. The band gives each role its colour and makes
 // the stops and the Auto slot clickable; this file decides only the text, the roles, and what fits.
 //
-//   effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"      full gate, in `full` and `compact`
+//   effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"            full gate, in `full` and `compact`
 //   LMHXM A                                                            mini gate, in `slim` and `minimal`
 
 import { EFFORTS } from './judge.ts'
@@ -31,7 +31,7 @@ const KNOB = '●'
 const RAIL = ' ─ '
 const UP = ' → '
 const DOWN = ' ← '
-const WHY_OPEN = 'auto: "'
+const WHY_OPEN = '"'
 const WHY_CLOSE = '"'
 const GAP = '  '
 
@@ -54,7 +54,7 @@ function arrowsOf(v: GateView): { lo: number; hi: number; glyph: string } | null
 
 /**
  * The full gate, fitted to `width` columns. Auto's reason is shown whole or not at all: when the whole
- * `auto: "<why>"` does not fit, it goes, never cut, as a cut reason says little. Then the `effort` label goes. The
+ * `"<why>"` does not fit, it goes, never cut, as a cut reason says little. Then the `effort` label goes. The
  * five stops and the Auto slot always stay, even if they are wider than `width` on their own.
  */
 export function gateRow(v: GateView, width: number): GateSeg[] {
