@@ -17,9 +17,9 @@ export type GateActions = { readonly pick: (level: Effort) => void; readonly tog
 
 /**
  * The gate's colours: `color` the accent (the pixling's rarity colour), `ink` a dark ink that reads on it, for the
- * Auto slot lit like a key. `isAutoFocused`: the site's focus ring is on the Auto slot.
+ * Auto slot lit like a key.
  */
-export type GatePaint = { readonly color: string; readonly ink: string; readonly isAutoFocused?: boolean }
+export type GatePaint = { readonly color: string; readonly ink: string }
 
 /** The level in use and the arrows of a shift in the accent colour; the rest dim. */
 const paintOf = (seg: GateSeg, paint: GatePaint): TextProps =>
@@ -27,20 +27,18 @@ const paintOf = (seg: GateSeg, paint: GatePaint): TextProps =>
 
 /**
  * Auto's slot: lit like a key while on, on the accent in dark ink; dim while off. The surface inverts a Button under
- * the pointer and under the focus ring, which would put out a lit A and light a dim one, so every look there is given
- * swapped (as the band's door does): under the pointer by `hover`, which the keyed Box around the Button heats, and
- * under the ring by drawing its resting look swapped. `inverseText` stands in, swapped, for the terminal's own
- * ground, which no colour names.
+ * the pointer, which would put out a lit A and light a dim one, so its look there is given swapped (as the band's door
+ * does) by `hover`, which the keyed Box around the Button heats. `inverseText` stands in, swapped, for the terminal's
+ * own ground, which no colour names.
  */
 const autoPaintOf = (isOn: boolean, paint: GatePaint): TextProps => {
   const rest: TextProps = isOn ? { color: paint.ink, backgroundColor: paint.color } : { dimColor: true }
-  const restSwapped: TextProps = isOn ? { color: paint.color, backgroundColor: paint.ink } : { color: 'inverseText', backgroundColor: 'inactive', dimColor: false }
   // A pale accent (a common pixling's is near white) leaves a colour change unseen, so the pointer marks it by weight:
   // lit, it stays lit and turns bold and underlined; dim, it lights to the theme's full text colour, bold.
   const hover = isOn
     ? { color: paint.color, backgroundColor: paint.ink, bold: true, underline: true }
     : { color: 'inverseText', backgroundColor: 'text', dimColor: false, bold: true }
-  return { ...(paint.isAutoFocused ? restSwapped : rest), hover }
+  return { ...rest, hover }
 }
 
 /** The gate's segments as elements, in a row's order. A stop is keyed `effort-<level>`, the Auto slot `effort-auto`. */

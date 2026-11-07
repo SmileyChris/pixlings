@@ -84,9 +84,6 @@ export type PixlingsEffortAuto = boolean
 /** Auto's last change of level, drawn as arrows until `until` (ms on the session clock). */
 export type PixlingsEffortShift = { from: string; to: string; until: number } | null
 
-/** The element each site's focus ring is on (`requestId` → `key`), so the gate draws a focused A as it rests. */
-export type PixlingsGateFocus = Record<string, string | null>
-
 declare module 'claude-code' {
   interface PluginState {
     pixlings: {
@@ -114,7 +111,6 @@ declare module 'claude-code' {
       effortPick: PixlingsEffortPick
       effortAuto: PixlingsEffortAuto
       effortShift: PixlingsEffortShift
-      gateFocus: PixlingsGateFocus
     }
   }
 }

@@ -810,9 +810,8 @@ describe('the Auto slot lit like a key', () => {
   })
 })
 
-describe('the Auto slot under the pointer and the focus ring', () => {
-  // The surface inverts a Button under the pointer and under the ring: A's colours are given swapped there, so
-  // inverted it looks as it rests, lit while on and dim while off.
+describe('the Auto slot under the pointer', () => {
+  // The surface inverts a Button under the pointer: A's colours are given swapped there, so it reads as intended.
   test('under the pointer, a lit A stays lit, bold and underlined; a dim one lights to the full text colour, bold', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock } = host(on, ['low'])
     await $.session.start(START)
@@ -833,36 +832,6 @@ describe('the Auto slot under the pointer and the focus ring', () => {
     const dim = await autoLetter(ui)
     expect(dim?.props?.['dimColor']).toBe(true)
     expect(hoverOf(dim!)).toEqual({ color: 'inverseText', backgroundColor: 'text', dimColor: false, bold: true })
-    await ui.unmount()
-  })
-
-  /** The person moving the band's ring onto one of its elements, as the engine raises it. */
-  const ring = (element: string) => ({ component: 'AbovePrompt' as const, requestId: 'band', plugin: 'pixlings', element, origin: { kind: 'person' as const } })
-
-  test('with the ring on A, it is drawn swapped; the ring moved off, as it rests', { options: { band: 'full', roam: false } }, async ($, on) => {
-    const { clock } = host(on, ['low'])
-    on('ui.focus', () => ({}))
-    await $.session.start(START)
-    await clock.advance(3000)
-    await ask($, 'what is a monad')
-    await clock.advance(20_000)
-    const ui = await $.ui.mount({ ...BAND, requestId: 'band', surface: 'terminal' })
-    const rest = await autoLetter(ui)
-    const color = rest?.props?.['backgroundColor']
-    expect(rest?.props?.['color']).toBe(KEY_INK)
-    expect((await $.ui.focus(ring('effort-auto'))).deny).toBeUndefined()
-    await ui.redraw()
-    const focused = await autoLetter(ui)
-    expect(focused?.props).toMatchObject({ color, backgroundColor: KEY_INK })
-    await $.ui.focus(ring('effort-high'))
-    await ui.redraw()
-    expect((await autoLetter(ui))?.props).toMatchObject({ color: KEY_INK, backgroundColor: color })
-    // Off and focused: the dim A on the ground, swapped.
-    await ui.press({ key: 'effort-auto' })
-    await clock.advance(10)
-    await $.ui.focus(ring('effort-auto'))
-    await ui.redraw()
-    expect((await autoLetter(ui))?.props).toMatchObject({ color: 'inverseText', backgroundColor: 'inactive' })
     await ui.unmount()
   })
 })
