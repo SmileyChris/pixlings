@@ -13,7 +13,7 @@ import type { Effort, ModelKey, Pick as JudgePick } from './judge.ts'
 /** How long the gate draws Auto's change of level as arrows, and its reason beside them (Effortless's 2.5s, longer). */
 export const SWITCHED_MS = 10_000
 /** How long the judge's brain shows when the person turns Auto on: a nod that Auto is thinking for them again. */
-export const AUTO_ON_BRAIN_MS = 1000
+export const AUTO_ON_BRAIN_MS = 2000
 
 const LABELS: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'XHigh', max: 'Max' }
 

@@ -453,7 +453,7 @@ describe('createAuto', () => {
     expect(auto.view().shift).toBe(judged)
   })
 
-  test('turning Auto on shows the brain for a second; turning it off does not', async () => {
+  test('turning Auto on shows the brain for two seconds; turning it off does not', async () => {
     const f = fake()
     const auto = createAuto(f.deps)
     await auto.load()
