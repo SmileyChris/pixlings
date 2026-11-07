@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, PromptOrigin, PromptSubmitInput, Register, Timer } from 'claude-code'
 
-import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto, PixlingsEffortPick, PixlingsEffortShift, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
+import type { PixlingsBubble, PixlingsCache, PixlingsEffect, PixlingsEffortAuto, PixlingsEffortPick, PixlingsEffortShift, PixlingsGateFocus, PixlingsMini, PixlingsNap, PixlingsVital, PixlingsView } from '../types'
 import type { PixlingsPersona } from '../types'
 import { createAuto, readAutoConfig } from './effort/auto.ts'
 import type { Auto } from './effort/auto.ts'
@@ -120,6 +120,8 @@ const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, null as numb
 const effortPickAtom = atom({ plugin: 'pixlings', key: 'effortPick' } as const, null as PixlingsEffortPick)
 const effortAutoAtom = atom({ plugin: 'pixlings', key: 'effortAuto' } as const, true as PixlingsEffortAuto)
 const effortShiftAtom = atom({ plugin: 'pixlings', key: 'effortShift' } as const, null as PixlingsEffortShift)
+/** Where each site's focus ring is (`ui.focus`), so the gate's A, focused, draws as it rests: see gate-view.ts. */
+const gateFocusAtom = atom({ plugin: 'pixlings', key: 'gateFocus' } as const, {} as PixlingsGateFocus)
 
 const STORE_KEY = 'pixling'
 /** Where a save this version cannot read is copied before the session runs without saving. */
@@ -2723,6 +2725,17 @@ export const register: Register = (on, options) => {
       now: at,
     }
 
+  // Where each site's focus ring went, once it moved: the gate's A, focused, draws swapped so the ring's inversion
+  // leaves it looking as it rests (gate-view.ts). The ring moving off every element clears the site's.
+  on('ui.focus', async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined) {
+      const element = e.element ?? null
+      await update($, gateFocusAtom, focus => (focus[e.requestId] === element ? focus : { ...focus, [e.requestId]: element })).catch(() => undefined)
+    }
+    return r
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const v = await read($, view)
     const p = pixling
@@ -2744,6 +2757,8 @@ export const register: Register = (on, options) => {
     const gateAt = now()
     const gate = gateOf(autoConfig.isOn ? await readGate($, gateFade, gateAt) : null, gateAt)
     const acts = gateActions($, () => auto)
+    const focus = await read($, gateFocusAtom)
+    const isAutoFocused = e.requestId !== undefined && focus[e.requestId] === 'effort-auto'
     // Read to redraw when the room opens or closes; the engine's list of panes is the truth, as a
     // close by the pane's own mark may never reach this plugin's hooks.
     await read($, roomOpenAtom)
@@ -2758,7 +2773,7 @@ export const register: Register = (on, options) => {
     const mini = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button']) =>
       gate ? (
         <Box marginLeft={2} flexShrink={0} flexDirection="row">
-          {gateElements({ Text, Button }, miniGate(gate), { color, ink: CARD_FILL }, acts)}
+          {gateElements({ Text, Button }, miniGate(gate), { color, ink: CARD_FILL, isAutoFocused }, acts)}
         </Box>
       ) : null
     const at = now()
@@ -2905,7 +2920,7 @@ export const register: Register = (on, options) => {
       if (piece.kind === 'gate' || piece.kind === 'miniGate') {
         if (!gate) return []
         if (piece.kind === 'miniGate') return [mini(Box, Text, Button)]
-        return gateSegs ? gateElements({ Text, Button }, gateSegs, { color, ink: CARD_FILL }, acts) : []
+        return gateSegs ? gateElements({ Text, Button }, gateSegs, { color, ink: CARD_FILL, isAutoFocused }, acts) : []
       }
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
@@ -3217,6 +3232,7 @@ export const register: Register = (on, options) => {
     const at = now()
     const gate = gateOf(autoConfig.isOn ? await readGate($, gateFade, at) : null, at)
     const acts = gateActions($, () => auto)
+    const isAutoFocused = (await read($, gateFocusAtom))[ROOM_ID] === 'effort-auto'
     const tab = tabOf(room.tab)
     const frame = roomFrame(at)
     const isEgg = !pixling || isHatching(at)
@@ -3258,7 +3274,7 @@ export const register: Register = (on, options) => {
       bubble: sayingNow(napping, said, at),
       persona,
       vitals: pieces.map(piece => ({ text: piece.text, color: TONE_COLOR[piece.tone], isDim: piece.tone === 'dim' })),
-      gate: gate ? (kit, width, color) => gateElements(kit, gateRow(gate, width), { color, ink: CARD_FILL }, acts) : null,
+      gate: gate ? (kit, width, color) => gateElements(kit, gateRow(gate, width), { color, ink: CARD_FILL, isAutoFocused }, acts) : null,
       squad,
       isPlanning,
       effect,
