@@ -82,10 +82,10 @@ By default, each prompt you send is read by Claude Haiku 5.5, which picks the ef
 In the `full` and `compact` bands the effort gate sits on a row of its own:
 
 ```
-effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"
+effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  "multi-file refactor"
 ```
 
-The knob is on the level in use, and when it moves, arrows show which way. Click a level to pick it (Auto turns off); click `A` to turn Auto on, and again to turn it off. In `slim` and `minimal` a mini gate, `LMHXM A`, takes the place of the effort at the end of the line: the level in use is lit, the rest dim, and `A` is lit like a key while Auto is on, as in the full gate. It's clickable the same way. `/pixling room` shows the gate too. Set `autoEffort` to `false` to turn all of it off.
+The knob is on the level in use, and when it moves, arrows show which way. Click a level to pick it: Auto turns off, and Pixlings runs `/effort` for you so the app's own setting follows. Click `A` to turn Auto on, and again to turn it off. In `slim` and `minimal` a mini gate, `LMHXM A`, takes the place of the effort at the end of the line: the level in use is lit, the rest dim, and `A` is lit like a key while Auto is on, as in the full gate. It's clickable the same way. `/pixling room` shows the gate too. Set `autoEffort` to `false` to turn all of it off.
 
 Auto steers only on models where changing the effort leaves the prompt cache alone: Opus 5.5 and Sonnet 5.5. On any other model it does nothing and the app's own effort goes out, since changing it there would rewrite the cache; the gate says `paused on this model`.
 
