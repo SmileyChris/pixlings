@@ -2,7 +2,7 @@
 // Effortless's (HeyCubit/effortless 1.72.0, hooks/register.tsx: `prompt.submit`, `turn.step`, `pickEffort`,
 // `toggleAutoEffort`, `choose`, the held pick on `turn.complete`), written fresh without `$`: the engine comes in as
 // deps, so plain fakes stand in under test. Where Pixlings differs (Haiku not answering turns Auto off for the
-// session at medium, one judge call at a time, the app taking the `/effort` Pixlings typed is not the person's
+// session at medium, one judge call at a time, the app taking the `/effort` Pixlings ran is not the person's
 // change), a comment says so.
 
 import type { PixlingsEffortPick, PixlingsEffortShift } from '../../types'
@@ -98,8 +98,8 @@ export type AutoDeps = {
   readState(): Promise<{ pick?: PixlingsEffortPick; isAuto?: boolean; shift?: PixlingsEffortShift }>
   store: { get(k: string): Promise<unknown>; set(k: string, v: unknown): Promise<void> }
   toast(t: string): void
-  /** Types `/effort <level>` into the app, so its own setting follows a click. */
-  typeEffort(level: Effort): Promise<void>
+  /** Runs `/effort <level>` for the app, so its own setting follows a click. */
+  setAppEffort(level: Effort): Promise<void>
   /** Haiku's verdict on the next message, or null when it didn't answer. */
   ask(prompt: string, current: JudgePick | null, context: string): Promise<Verdict | null>
   cfg: AutoConfig
@@ -228,7 +228,7 @@ export function createAuto(deps: AutoDeps) {
     if (isEffort(r.effort)) {
       const seen = r.effort
       const isFirst = engineEffort === undefined
-      // The app taking the /effort Pixlings typed for a click lands on the manual pick's level: not a new choice.
+      // The app taking the /effort Pixlings ran for a click lands on the manual pick's level: not a new choice.
       const isTyped = pick?.by === 'manual' && pick.effort === seen
       const isByPerson = !isFirst && seen !== engineEffort && !isTyped
       engineEffort = seen
@@ -354,14 +354,14 @@ export function createAuto(deps: AutoDeps) {
       }
     },
 
-    /** The person picked a level: Auto goes off, the requests follow at once, and `/effort` is typed for the app. */
+    /** The person picked a level: Auto goes off, the requests follow at once, and the app is sent `/effort` so its own control follows. */
     async pickLevel(level: Effort): Promise<void> {
       if (!isEffort(level)) return
       choices += 1
       isAuto = false
       isNoAnswerHeld = false
       await Promise.all([keepAuto(false), choose({ effort: level, why: 'your pick', by: 'manual' }, { isAuto: false })])
-      await quiet(() => deps.typeEffort(level))
+      await quiet(() => deps.setAppEffort(level))
     },
 
     /** The person switched Auto on or off. */

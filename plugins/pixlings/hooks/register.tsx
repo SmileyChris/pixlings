@@ -277,26 +277,14 @@ type Io = {
   watch: (argv: string[], onText: (text: string) => void) => Promise<void>
 }
 
-/** What Pixlings last typed into the prompt box, and whether the person was told to press Enter (once a session). */
-type Typing = { last: string; isTold: boolean }
-
 /**
- * Types `/effort <level>` into the prompt box for the person to send with Enter. A command the person sends is read by the
- * app itself, so its own Effort control follows; one run inside the engine is not. Copied from Effortless's `typeCommand`.
- * Never overwrites a draft of the person's: it does nothing when the box is not empty.
+ * Runs `/effort <level>` for the app, queued until the session is idle, so its own Effort setting follows a click with
+ * nothing for the person to send. The requests follow the pick either way (Auto rewrites them), so a run that fails
+ * changes only what the app's own control shows.
  */
-async function typeEffort($: EngineInterface, level: Effort, typing: Typing): Promise<void> {
-  const text = `/effort ${level}`
+async function setAppEffort($: EngineInterface, level: Effort): Promise<void> {
   try {
-    const draft = (await $.prompt.read()).text.trim()
-    // A draft of your own is never overwritten; the mod's own earlier command is replaced.
-    if (draft !== '' && draft !== typing.last) return
-    const filled = await $.prompt.fill({ text })
-    if (filled.isFilled) typing.last = text
-    if (filled.isFilled && !typing.isTold) {
-      typing.isTold = true
-      $.ui.toast(`Press Enter to send ${text} so the app's own control follows`)
-    }
+    await $.command.run({ command: 'effort', args: level })
   } catch {
     // Never into a turn.
   }
@@ -405,7 +393,6 @@ export const register: Register = (on, options) => {
   const autoConfig = readAutoConfig(options)
   // Auto effort for this session, built when it starts (it needs the session's `$`); null before then.
   let auto: Auto | null = null
-  const typing: Typing = { last: '', isTold: false }
 
   // The engine's clock is the one timers run on; Date.now() is synced to it every second so
   // reading the time stays synchronous (a frame is drawn ten times a second).
@@ -1592,7 +1579,7 @@ export const register: Register = (on, options) => {
         },
         store: { get: key => $.store.get(key), set: async (key, value) => $.store.set(key, value) },
         toast: text => $.ui.toast(text),
-        typeEffort: level => typeEffort($, level, typing),
+        setAppEffort: level => setAppEffort($, level),
         ask: async (prompt, current, context) => askHaiku(request => $.model.complete(request), prompt, current, context, contextPercent),
         cfg: autoConfig,
       })

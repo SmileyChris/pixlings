@@ -94,10 +94,13 @@ const host = (on: On, replies: Reply[] = [], o: HostOptions = {}) => {
     return { value: undefined } as never
   })
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }) as never)
-  on('prompt.fill', ($, e) => {
-    filled.push(e.text)
-    // The plugin's own call: the event's result itself.
-    return { isFilled: true } as never
+  // The app's own /effort, as a plugin's `$.command.run` reaches it.
+  on('command.run', { command: 'effort' }, ($, e) => {
+    filled.push(`/effort ${e.args}`)
+    return { text: '' } as never
+  })
+  on('prompt.fill', () => {
+    throw new Error('the gate never types into the prompt box')
   })
   /** When, on the clock, each redraw the plugin asked for came. */
   const invalidated: number[] = []
@@ -382,7 +385,7 @@ describe('the effort gate in the band', () => {
     }
   })
 
-  test('pressing a stop picks that level and types /effort; pressing A turns Auto back on', { options: { band: 'full', roam: false } }, async ($, on) => {
+  test('pressing a stop picks that level and runs /effort itself; pressing A turns Auto back on', { options: { band: 'full', roam: false } }, async ($, on) => {
     const { clock, filled, toasts, reached } = host(on, ['low'])
     await $.session.start(START)
     await clock.advance(3000)
@@ -396,7 +399,7 @@ describe('the effort gate in the band', () => {
     await ui.press({ key: 'effort-high' })
     await clock.advance(10)
     expect(filled).toEqual(['/effort high'])
-    expect(toasts).toContain("Press Enter to send /effort high so the app's own control follows")
+    expect(toasts.some(t => t.includes('Press Enter'))).toBe(false)
     for (const surface of SURFACES) {
       const shown = await $.ui.mount({ ...BAND, surface })
       expect(await shown.find({ type: 'Text', text: '●H' }), surface).toBeDefined()

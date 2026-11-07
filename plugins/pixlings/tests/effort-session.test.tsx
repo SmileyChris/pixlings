@@ -73,9 +73,9 @@ const host = (on: On, o: HostOptions = {}) => {
     return { value: undefined } as never
   })
   on('prompt.read', () => ({ value: { text: o.draft ?? '', cursor: 0 } }) as never)
-  on('prompt.fill', ($, e) => {
-    filled.push(e.text)
-    return { value: { isFilled: true } } as never
+  on('command.run', { command: 'effort' }, ($, e) => {
+    filled.push(`/effort ${e.args}`)
+    return { text: '' } as never
   })
   on('ui.invalidate', () => ({ value: undefined }) as never)
   on('ui.blit', () => ({ value: {} }) as never)

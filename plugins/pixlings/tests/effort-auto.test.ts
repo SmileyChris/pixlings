@@ -159,7 +159,7 @@ const fake = (opts: { cfg?: Partial<AutoConfig>; stored?: Map<string, unknown>; 
     toast: t => {
       f.toasts.push(t)
     },
-    typeEffort: async level => {
+    setAppEffort: async level => {
       f.typed.push(level)
     },
     ask: async (prompt, current, context) => {
@@ -423,7 +423,7 @@ describe('createAuto', () => {
       toast: () => {
         throw new Error('toast')
       },
-      typeEffort: async () => {
+      setAppEffort: async () => {
         throw new Error('type')
       },
       ask: async () => {
