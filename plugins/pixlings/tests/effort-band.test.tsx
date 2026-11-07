@@ -153,6 +153,13 @@ const nodes = (tree: unknown): Node[] => {
   const node = tree as Node
   return [node, ...(node.children ?? []).flatMap(nodes)]
 }
+/** The strings drawn at rest: not those of a Box shown only under the pointer, as the hover card is. */
+const restingStrings = (tree: unknown): string[] => {
+  if (typeof tree === 'string') return [tree]
+  if (!tree || typeof tree !== 'object') return []
+  const node = tree as Node
+  return node.props?.['display'] === 'none' ? [] : (node.children ?? []).flatMap(restingStrings)
+}
 const strings = (node: Node): string[] => nodes(node).flatMap(n => (n.children ?? []).filter((c): c is string => typeof c === 'string'))
 /** The innermost row Box that holds the gate's label (or, without it, its stops): the gate row as drawn. */
 const gateRowOf = (tree: unknown): Node | undefined =>
@@ -668,16 +675,22 @@ describe('the effort gate in the band', () => {
     await clock.advance(20_000)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({ ...BAND, surface })
-      const stats = nodes(await ui.drawn()).find(n => n.props?.['key'] === 'stats')!
-      const gate = gateRowOf(stats)
-      // The rows in the column's flow: the hover card is placed over them, outside it.
-      const others = (stats.children as Node[]).filter(row => row !== gate && row.props?.['position'] !== 'absolute')
+      const tree = await ui.drawn()
+      const stats = nodes(tree).find(n => n.props?.['key'] === 'stats')!
+      const column = nodes(tree).find(n => (n.children ?? []).includes(stats))!
+      const gate = gateRowOf(column)!
+      // The gate's row right under the card's scope, outside it, in the column's flow.
+      expect(column.children!.indexOf(gate), surface).toBe(column.children!.indexOf(stats) + 1)
+      // The rows in the scope's flow: the hover card is placed over them, outside it.
+      const others = (stats.children as Node[]).filter(row => row.props?.['position'] !== 'absolute')
       expect(others.map(row => strings(row).join('')), surface).toEqual(['Quackers Lv 3 · Duck ★', '██░░░░░░░░░░ 21/113  ', '⏳ cache ~4:42 · 0% cached · opus 5.5'])
-      // The columns each row is laid out in: its own width, else the column's.
+      // The columns each row is laid out in: its own width, else the scope's.
       expect(others.map(row => row.props?.['width'] ?? stats.props?.['width']), surface).toEqual([56, 56, 56])
-      expect(strings(gate!).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
-      // The column grows as far as that row's 61 columns, not to all the band has.
-      expect(stats.props?.['width'], surface).toBe(61)
+      expect(strings(gate).join(''), surface).toBe('effort  L ─ M ─ ●H ─ X ─ Mx  ┃ A  auto: "multi-file refactor"')
+      // The column grows as far as that row's 61 columns, not to all the band has; the card's scope keeps the 56.
+      expect(column.props?.['width'], surface).toBe(61)
+      expect(gate.props?.['width'], surface).toBe(61)
+      expect(stats.props?.['width'], surface).toBe(56)
       await ui.unmount()
     }
   })
@@ -722,7 +735,8 @@ describe('the effort gate in the band', () => {
     const spoken = all.filter((t, i) => all[i + 1] === ' │')
     expect(spoken).toHaveLength(2)
     expect(spoken.join(' ')).toContain('Bartholomew')
-    expect(all.some(t => t.trimEnd().endsWith('…'))).toBe(false)
+    // Nothing drawn at rest is cut; the hover card's line, shown only under the pointer, may be.
+    expect(restingStrings(await ui.drawn()).some(t => t.trimEnd().endsWith('…'))).toBe(false)
     // The gate row, its label left off at this width.
     expect(all).toContain('●H')
     expect(await ui.find({ type: 'Button', key: 'effort-auto' } as never)).toBeDefined()
@@ -784,6 +798,93 @@ describe('the Auto slot lit like a key', () => {
       const letter = await autoLetter(ui)
       expect(letter?.props?.['backgroundColor'], surface).toBe(color)
       expect(letter?.props?.['color'], surface).toBe(KEY_INK)
+      await ui.unmount()
+    }
+  })
+})
+
+/** Each node of a drawing with its ancestors, the root first. */
+const withAncestors = (tree: unknown, above: Node[] = []): { node: Node; above: Node[] }[] => {
+  if (!tree || typeof tree !== 'object') return []
+  const node = tree as Node
+  return [{ node, above }, ...(node.children ?? []).flatMap(c => withAncestors(c, [...above, node]))]
+}
+const keyOf = (n: Node): unknown => n.key ?? n.props?.['key']
+const hoverOf = (n: Node): Record<string, unknown> | undefined =>
+  ((n as { hover?: Record<string, unknown> }).hover ?? n.props?.['hover']) as Record<string, unknown> | undefined
+/** A Box the pointer reveals over what is under it: placed absolute, drawn `display: none`, shown by its hover. */
+const isOverlay = (n: Node): boolean =>
+  n.type === 'Box' && n.props?.['position'] === 'absolute' && n.props?.['display'] === 'none' && hoverOf(n)?.['display'] === 'flex'
+/** The overlays a pointer over a keyed Box reveals: those beneath it and not beneath a nested keyed Box. */
+const overlaysOf = (scope: Node): Node[] =>
+  (scope.children ?? []).flatMap(c => {
+    if (!c || typeof c !== 'object') return []
+    const n = c as Node
+    if (isOverlay(n)) return [n]
+    return n.type === 'Box' && typeof keyOf(n) === 'string' ? [] : overlaysOf(n)
+  })
+/**
+ * Why a pointer on the gate's Button `key` would not reach it, or [] when it would: inside the `stats` card's scope,
+ * inside a Box that a hover reveals or restyles, or in a hover scope that reveals an overlay.
+ */
+const occluders = (tree: unknown, key: string): string[] => {
+  const found = withAncestors(tree).find(({ node }) => node.type === 'Button' && keyOf(node) === key)
+  if (!found) return [`no ${key}`]
+  const why: string[] = []
+  if (found.above.some(n => keyOf(n) === 'stats')) why.push('inside the stats card scope')
+  if (found.above.some(n => n.type === 'Box' && hoverOf(n) !== undefined)) why.push('inside a Box with a hover')
+  const scope = found.above.findLast(n => n.type === 'Box' && typeof keyOf(n) === 'string')
+  if (scope && overlaysOf(scope).length > 0) why.push(`in the hover scope ${String(keyOf(scope))}, which reveals an overlay`)
+  return why
+}
+
+describe('the gate is out from under the stats card', () => {
+  for (const band of ['full', 'compact', 'slim', 'minimal'] as const) {
+    test(`${band}: no hover card or overlay lies over the gate's Buttons, so a click reaches them`, { options: { band, roam: false } }, async ($, on) => {
+      const { clock } = host(on, ['high'])
+      await $.session.start(START)
+      await clock.advance(3000)
+      await ask($, 'refactor the auth module')
+      // Its greeting over, and the terminal's images known, so slim is its two-row picture with the mini gate.
+      await clock.advance(20_000)
+      for (const surface of SURFACES) {
+        const ui = await $.ui.mount({ ...BAND, surface })
+        await clock.advance(1000)
+        await ui.redraw()
+        const tree = await ui.drawn()
+        for (const key of ['effort-high', 'effort-auto']) expect(occluders(tree, key), `${surface} ${key}`).toEqual([])
+        // The band still has its card, in the stats' scope.
+        const stats = nodes(tree).find(n => keyOf(n) === 'stats')
+        expect(stats && overlaysOf(stats).length, surface).toBe(band === 'minimal' || (band === 'slim' && surface === 'desktop') ? undefined : 1)
+        await ui.unmount()
+      }
+    })
+  }
+
+  test('slim on a terminal that draws images is the picture, with the mini gate on a row of the column', { options: { band: 'slim', roam: false } }, async ($, on) => {
+    const { clock } = host(on, ['high'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    await clock.advance(20_000)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await clock.advance(1000)
+    await ui.redraw()
+    const picture = (await ui.findAll({ type: 'Image' } as never)).find(i => (i as { key?: string }).key?.startsWith('pixling-image-')) as { props: Record<string, unknown> } | undefined
+    expect(picture?.props).toMatchObject({ rows: 2 })
+    expect(nodes(await ui.drawn()).some(n => keyOf(n) === 'stats')).toBe(true)
+    await ui.unmount()
+  })
+
+  test('the room has no overlay over its gate', async ($, on) => {
+    const { clock } = host(on, ['high'])
+    await $.session.start(START)
+    await clock.advance(3000)
+    await ask($, 'refactor the auth module')
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount(room(surface))
+      const tree = await ui.drawn()
+      for (const key of ['effort-high', 'effort-auto']) expect(occluders(tree, key), `${surface} ${key}`).toEqual([])
       await ui.unmount()
     }
   })

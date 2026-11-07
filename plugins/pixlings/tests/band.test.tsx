@@ -470,6 +470,14 @@ describe('the band', () => {
   })
 })
 
+/** The strings drawn at rest: not those of a Box shown only under the pointer, as the hover card is. */
+const restingStrings = (tree: unknown): string[] => {
+  if (typeof tree === 'string') return [tree]
+  if (!tree || typeof tree !== 'object') return []
+  const node = tree as { props?: Record<string, unknown>; children?: unknown[] }
+  return node.props?.['display'] === 'none' ? [] : (node.children ?? []).flatMap(restingStrings)
+}
+
 /** The Image with this key, or for the picture (`pixling-image`, keyed with its cells) the first whose key starts with it. */
 const imageOf = async (ui: { findAll: (q: never) => Promise<readonly { key?: string; props: Record<string, unknown> }[]> }, key: string) =>
   (await ui.findAll({ type: 'Image' } as never)).find(e => e.key === key || (key === 'pixling-image' && e.key?.startsWith('pixling-image-'))) as
@@ -589,7 +597,8 @@ describe('the band at each size', () => {
     const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
     // Under the name and XP's one row, with a bar on its right, uncut.
     expect(texts.some(t => t.includes('Bartholomew'))).toBe(true)
-    expect(texts.some(t => t.endsWith('…'))).toBe(false)
+    // The speech whole: nothing drawn at rest is cut (the hover card's line, shown under the pointer, may be).
+    expect(restingStrings(await ui.drawn()).some(t => t.endsWith('…'))).toBe(false)
     expect(texts).toContain(' Lv 3  ')
     expect(texts).toContain(' │')
     expect(texts.some(t => t.startsWith('╭'))).toBe(false)

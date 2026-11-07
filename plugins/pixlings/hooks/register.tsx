@@ -12,7 +12,7 @@ import { askHaiku } from './effort/haiku.ts'
 import { cacheSafe, contextFrom, EFFORTS } from './effort/judge.ts'
 import type { Effort } from './effort/judge.ts'
 import { award, BADGES, badgeTitle, countDay, howOf, earnedBadges, localDate, medalOf, progressOf, recapLine, tierOf, touchDay } from './lib/badges.ts'
-import { bandPixels, bandRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, MINI_GATE_COLUMNS, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
+import { bandPixels, bandRows, blockRows, FACES, formFor, holdsFrame, imageGrid, isBandSize, MINI_GATE_COLUMNS, QUOTE_INSET, layoutInfo, lineSpeech, pickForm, pictureOf, walkScale } from './lib/band.ts'
 import type { Form, Part } from './lib/band.ts'
 import { baseMood, holdFor, moodNow, PRIORITY, react, speak } from './lib/brain.ts'
 import type { Bubble, Held } from './lib/brain.ts'
@@ -2861,10 +2861,22 @@ export const register: Register = (on, options) => {
     const rows = bandRows(form, column, maxRows)
     // A picture with a gate row grew for the gate as for its speech (`bandRows`): it still talks from its bottom row up.
     const blocks = layoutInfo({ ...column, rows, ...(form.kind === 'image' && column.gate === 'row' ? { isTall: false } : {}) })
+    // The row that holds the gate, its own row or a row the mini gate ends, stays out of the card's hover scope, so the
+    // card never lies over the gate's Buttons and the pointer on them leaves it shut. The rows above the gate are the
+    // scope, the card hanging up from their bottom; with none above, the rows below, the card hanging from their top.
+    const gateIndex = blocks.findIndex(block => block.kind === 'row' && block.parts.some(piece => piece.kind === 'gate' || piece.kind === 'miniGate'))
+    const gateBlock = gateIndex < 0 ? null : blocks[gateIndex]!
+    const above = gateBlock ? blocks.slice(0, gateIndex) : blocks
+    const below = gateBlock ? blocks.slice(gateIndex + 1) : []
+    const isHung = gateBlock !== null && above.length === 0
+    const rowsOf = (some: readonly (typeof blocks)[number][]): number => some.reduce((n, block) => n + blockRows(block), 0)
+    // The rows the card may take: the band's, less the gate's row and those under it; or, hung from below the gate,
+    // those under it.
+    const cardRows = !gateBlock ? rows : isHung ? rowsOf(below) : rows - rowsOf([gateBlock, ...below])
     // The card opens past the info rows, over the band's empty right, so its shelf has room.
     // A band too short for the card shows its line instead, as wide as the band, as the engine
     // clips the reveal to the band's rows.
-    const isBrief = rows < CARD_ROWS
+    const isBrief = cardRows < CARD_ROWS
     const cardWidth = isBrief
       ? Math.max(width, e.props.bodyColumns - spriteColumns - 2)
       : Math.max(width, Math.min(CARD_MAX, e.props.bodyColumns - spriteColumns - 4))
@@ -2911,26 +2923,24 @@ export const register: Register = (on, options) => {
       return [<Text wrap="truncate-end">{piece.text.padEnd(width - QUOTE_INSET)}</Text>, <Text color={color}>{' │'}</Text>]
     }
 
-    const info = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], kit: RoomKit) => (
-      // Keyed, so it is the card's hover scope: the pointer over the stats opens it, not over the sprite.
-      <Box key="stats" flexDirection="column" marginLeft={1} flexShrink={1} width={columnWidth}>
-        {blocks.map(block =>
-          block.kind === 'bubble' ? (
-            <Box borderStyle="round" borderColor={color} paddingX={1} width={width} flexDirection="column">
-              {block.lines.map(line => (
-                <Text>{line}</Text>
-              ))}
-            </Box>
-          ) : (
-            <Box flexDirection="row" width={isGateRow(block) ? columnWidth : width}>
-              {block.parts.flatMap(piece => part(Box, Text, Button, piece))}
-            </Box>
-          ),
-        )}
-        {/* Opaque, with its own ink, so the rows it covers never show through, on a dark terminal or a light one. */}
+    const info = (Box: Kit['Box'], Text: Kit['Text'], Button: Kit['Button'], kit: RoomKit) => {
+      const drawBlock = (block: (typeof blocks)[number]) =>
+        block.kind === 'bubble' ? (
+          <Box borderStyle="round" borderColor={color} paddingX={1} width={width} flexDirection="column">
+            {block.lines.map(line => (
+              <Text>{line}</Text>
+            ))}
+          </Box>
+        ) : (
+          <Box flexDirection="row" width={isGateRow(block) ? columnWidth : width}>
+            {block.parts.flatMap(piece => part(Box, Text, Button, piece))}
+          </Box>
+        )
+      /* Opaque, with its own ink, so the rows it covers never show through, on a dark terminal or a light one. */
+      const hoverCard = (
         <Box
           position="absolute"
-          bottom={0}
+          {...(isHung ? { top: 0 } : { bottom: 0 })}
           left={0}
           width={cardWidth}
           display="none"
@@ -2944,14 +2954,38 @@ export const register: Register = (on, options) => {
           {!isBrief
             ? drawCard(kit, card, cardWidth, CARD_FILL_PX, CARD_INK)
             : // The persona whole: the rows cut it, not the card's one-row cap.
-              lineSpeech(briefLine(p, personaLine(rawPersona, Infinity), at), cardWidth - 2, rows).map(line => (
+              lineSpeech(briefLine(p, personaLine(rawPersona, Infinity), at), cardWidth - 2, cardRows).map(line => (
                 <Text color={CARD_INK} wrap="truncate-end">
                   {line}
                 </Text>
               ))}
         </Box>
-      </Box>
-    )
+      )
+      // Keyed, so it is the card's hover scope: the pointer over the stats opens it, not over the sprite.
+      if (!gateBlock) {
+        return (
+          <Box key="stats" flexDirection="column" marginLeft={1} flexShrink={1} width={columnWidth}>
+            {blocks.map(drawBlock)}
+            {hoverCard}
+          </Box>
+        )
+      }
+      const scope = (some: readonly (typeof blocks)[number][]) => (
+        <Box key="stats" flexDirection="column" width={width}>
+          {some.map(drawBlock)}
+          {hoverCard}
+        </Box>
+      )
+      // The gate's row between the rows above it and those below, in the column's flow as before: only the card's
+      // scope has changed.
+      return (
+        <Box flexDirection="column" marginLeft={1} flexShrink={1} width={columnWidth}>
+          {above.length > 0 ? scope(above) : null}
+          {drawBlock(gateBlock)}
+          {below.length > 0 ? isHung ? scope(below) : <Box flexDirection="column" width={width}>{below.map(drawBlock)}</Box> : null}
+        </Box>
+      )
+    }
 
     /**
      * The sprite in a hover scope of its own: under the pointer, a door on its bottom row that
