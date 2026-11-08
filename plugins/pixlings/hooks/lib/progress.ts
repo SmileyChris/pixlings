@@ -154,8 +154,8 @@ export const SHINY_EGG_CHANCE = 0.01
 export const SHINY_EGG_XP = 1000
 
 
-/** Picks a rarity by weight, then a species of it, then a name. Shininess is not rolled: it hatches from a shiny egg. */
-export const roll = (random: () => number): { species: Species; name: string } => {
+/** Picks a rarity by weight, then a species of it. */
+export const rollSpecies = (random: () => number): Species => {
   const total = RARITY_ORDER.reduce((sum, r) => sum + RARITY_WEIGHT[r], 0)
   let x = random() * total
   let rarity: Rarity = 'common'
@@ -167,7 +167,12 @@ export const roll = (random: () => number): { species: Species; name: string } =
     }
   }
   const pool = SPECIES.filter(s => s.rarity === rarity)
-  const species = pool[Math.floor(random() * pool.length)] ?? SPECIES[0]!
+  return pool[Math.floor(random() * pool.length)] ?? SPECIES[0]!
+}
+
+/** Picks a species, then a name. Shininess is not rolled: it hatches from a shiny egg. */
+export const roll = (random: () => number): { species: Species; name: string } => {
+  const species = rollSpecies(random)
   const name = NAMES[Math.floor(random() * NAMES.length)] ?? 'Pip'
   return { species, name }
 }
