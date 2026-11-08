@@ -6,7 +6,8 @@ import type { Mood } from '../hooks/lib/canvas.ts'
 import { blockingWindow, formatDuration, iconFor, isTestCommand, riskOf, testOutcome } from '../hooks/lib/detect.ts'
 import { allLines, say } from '../hooks/lib/lines.ts'
 import { assetPath, linuxPlayer, macNotification, platformOfUname, windowsPlayer, windowsToast } from '../hooks/lib/platform.ts'
-import { friendshipOf, gain, gearOf, hatchPixling, levelOf, MATURE_LEVEL, nextEgg, rehatch, revive, roll, SHINY_EGG_XP, shinyEggOf, xpForLevel } from '../hooks/lib/progress.ts'
+import { hatchEgg, nestOf } from '../hooks/lib/nest.ts'
+import { friendshipOf, gain, gearOf, hatchPixling, levelOf, revive, roll, SHINY_EGG_XP, shinyEggOf, xpForLevel } from '../hooks/lib/progress.ts'
 import { base64, encodeCells, rasterOf, toCells, toSvg } from '../hooks/lib/raster.ts'
 import { checkSpecies, SPECIES } from '../hooks/lib/sprites.ts'
 
@@ -233,35 +234,8 @@ describe('friendship', () => {
   })
 })
 
-describe('the next egg', () => {
-  test('released before it matures, the next egg is the same one again; once matured, its own', () => {
-    const first = hatchPixling(() => 0.42, 1_700_000_000_000)
-    const a = nextEgg({ ...first, xp: xpForLevel(MATURE_LEVEL) }, 1_700_000_100_000)
-    expect(a.eggSeed).toBe(first.hatchedAt)
-    // Released young, over and over: the same species and name every time.
-    let p = a
-    for (let i = 1; i <= 5; i++) {
-      p = nextEgg({ ...p, xp: xpForLevel(MATURE_LEVEL - 1) }, a.hatchedAt + i * 1000)
-      expect([p.species, p.name, p.eggSeed]).toEqual([a.species, a.name, first.hatchedAt])
-    }
-    // Matured: the egg comes from its own birth time.
-    const grown = nextEgg({ ...p, xp: xpForLevel(MATURE_LEVEL) }, p.hatchedAt + 1000)
-    expect(grown.eggSeed).toBe(p.hatchedAt)
-    // Different parents roll different eggs: across many, the species vary.
-    const kinds = new Set(Array.from({ length: 60 }, (_, i) => nextEgg({ ...first, hatchedAt: first.hatchedAt + i * 86_400_000, xp: xpForLevel(MATURE_LEVEL) }, 0).species))
-    expect(kinds.size).toBeGreaterThan(4)
-  })
-
-  test('an old save with no parent rolls from its own birth time, the same every time', () => {
-    const old = revive({ v: 1, species: 'blip', name: 'Pip', hatchedAt: 5, xp: 0 })!
-    expect(old.eggSeed).toBeNull()
-    expect(nextEgg(old, 10).species).toBe(nextEgg(old, 20).species)
-    expect(nextEgg(old, 10).eggSeed).toBe(5)
-  })
-})
-
 describe('the shiny egg', () => {
-  test('each 1,000 XP has 1% of a shiny egg: about two in three by level 99, and the next hatch is shiny', () => {
+  test('each 1,000 XP has 1% of a shiny egg: about two in three by level 99, and the nest gains a shiny egg', () => {
     const eggs = Array.from({ length: 4000 }, (_, i) => ({ hatchedAt: 1_700_000_000_000 + i * 7_919_993, xp: xpForLevel(99) }))
     const laid = eggs.map(e => shinyEggOf(e))
     const share = (L: number): number => laid.filter(at => at !== null && at.xp <= xpForLevel(L)).length / eggs.length
@@ -279,10 +253,10 @@ describe('the shiny egg', () => {
     const i = laid.findIndex(at => at !== null)
     const p = { ...hatchPixling(() => 0.4, eggs[i]!.hatchedAt), xp: laid[i]!.xp - 1 }
     expect(hatchPixling(() => 0.4, 0).isShiny).toBe(false)
-    expect(rehatch(p, () => 0.4, 1).isShiny).toBe(false)
+    expect(nestOf(p).some(egg => egg.isShiny)).toBe(false)
     const { pixling, isShinyEgg } = gain(p, 'turn')
     expect(isShinyEgg).toBe(true)
     expect(gain(pixling, 'turn').isShinyEgg).toBe(false)
-    expect(rehatch(pixling, () => 0.4, 1).isShiny).toBe(true)
+    expect(nestOf(pixling)[2]?.isShiny).toBe(true)
   })
 })

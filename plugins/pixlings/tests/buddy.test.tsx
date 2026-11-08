@@ -5,7 +5,8 @@ import type { On } from 'claude-code'
 import { test } from './kit.ts'
 import { adopt, buddyBody, cleanName, companionOf, configPath, epochMs, fnv1a, speciesInText, wyhash } from '../hooks/lib/buddy.ts'
 import { oneLine, personaFor, personasOf, TEMPLATE_MAX } from '../hooks/lib/persona.ts'
-import { daysTogether, hatchPixling, mergeSave, rehatch, revive } from '../hooks/lib/progress.ts'
+import { hatchEgg, nestOf } from '../hooks/lib/nest.ts'
+import { daysTogether, hatchPixling, mergeSave, revive } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
 import { mayQuip, QUIP_GAP_MS, QUIP_MAX_CHARS, quipOf, quipRequest } from '../hooks/lib/quips.ts'
 import { SPECIES } from '../hooks/lib/sprites.ts'
@@ -372,7 +373,7 @@ describe('personas', () => {
     expect(seen.size).toBeGreaterThan(1)
     // A new egg is a new personality; adopting is not carried into it.
     const adopted = adopt(once, { name: 'Pebblet', personality: 'Hums.', hatchedAt: 1, species: once.species, isShiny: false })
-    const fresh = rehatch(adopted, () => 0.7, NOON)
+    const fresh = hatchEgg(adopted, nestOf(adopted)[0]!, NOON)
     expect(fresh.adoptedFrom).toBeNull()
     expect(fresh.badges).toEqual(adopted.badges)
   })

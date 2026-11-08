@@ -11,8 +11,10 @@ import type { Bubble, Held } from './lib/brain.ts'
 import { adopt, cleanName, companionOf, configPath } from './lib/buddy.ts'
 import type { Companion } from './lib/buddy.ts'
 import { CARD_BG, CARD_SCALE, renderCard, shareText } from './lib/card.ts'
-import { blank, CANVAS_W, HATCH_MS, layoutFor, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
+import { blank, CANVAS_W, HATCH_MS, TRANSPARENT, layoutFor, MINI_LEAVE_MS, MINI_POOF_MS, miniTint, renderFrame, renderHatch, renderSilhouette, samePixels, SPRITE_X, SQUAD_CAP, squadWidth } from './lib/canvas.ts'
 import type { Icon, MiniView, Mood, Pixels } from './lib/canvas.ts'
+import { describeEgg, eggPixels } from './lib/eggs.ts'
+import type { EggLook } from './lib/eggs.ts'
 import { FACE_IDS, isFace, isHat, isNeck, NECK_IDS } from './lib/gear.ts'
 import { blockingWindow, clockTime, formatDuration, iconFor, isTestCommand, linesWritten, riskOf, runsGitCommit, testOutcome } from './lib/detect.ts'
 import type { LimitWindow, Risk } from './lib/detect.ts'
@@ -37,6 +39,8 @@ import { BUS_MONITOR_ARGV, busReader, clickRouter, focusPaneArgv, folderOf, noti
 import type { ZellijPane } from './lib/focus.ts'
 import { encodePng } from './lib/png.ts'
 import { mayQuip, quipOf, quipRequest, tokensOf } from './lib/quips.ts'
+import { hatchEgg, hatchLookOf, nestOf, partnerSpecies } from './lib/nest.ts'
+import type { Egg } from './lib/nest.ts'
 import type { QuipFacts, QuipKind, QuipReply, QuipRequest } from './lib/quips.ts'
 import {
   bump,
@@ -48,12 +52,12 @@ import {
   levelOf,
   mergeSave,
   MATURE_LEVEL,
-  nextEgg,
-  nextSeedOf,
   friendshipOf,
+  parentOf,
   petWait,
   revive,
   shinyEggOf,
+  startLine,
   DROP_ODDS,
   UNLOCKS,
   unlockedAt,
@@ -63,8 +67,8 @@ import type { Day, Pixling, Stats, Unlock, XpEvent } from './lib/progress.ts'
 import { base64, rasterOf, toSvg } from './lib/raster.ts'
 import { isWalking, newWalker, placeIn, rescale, roamRange, walk } from './lib/roam.ts'
 import type { RoamMode, Walker } from './lib/roam.ts'
-import { CARD_MAX, ROOM_EGG_KEY, ROOM_SPRITE_KEY, briefLine, cardModel, drawCard, drawRoom, personaLine, seatOf, tabOf } from './lib/room.ts'
-import type { RoomActions, RoomKit, RoomModel } from './lib/room.ts'
+import { CARD_MAX, ROOM_EGG_KEY, ROOM_SPRITE_KEY, briefLine, cardModel, drawCard, drawRoom, nestEggKey, personaLine, seatOf, tabOf } from './lib/room.ts'
+import type { NestModel, RoomActions, RoomKit, RoomModel } from './lib/room.ts'
 import { RARITY_COLOR, RARITY_STARS, SPECIES, speciesById } from './lib/sprites.ts'
 import type { Species } from './lib/sprites.ts'
 import { addTics, isEyeRoll, ticsIn, topTics } from './lib/tics.ts'
@@ -98,6 +102,8 @@ const vitalsAtom = atom({ plugin: 'pixlings', key: 'vitals' } as const, [] as Pi
 const cacheAtom = atom({ plugin: 'pixlings', key: 'cache' } as const, null as PixlingsCache)
 /** Whether the room is open, so the band leaves out its door to it. */
 const roomOpenAtom = atom({ plugin: 'pixlings', key: 'isRoomOpen' } as const, false)
+/** Whether `/pixling hatch` has the nest open in the room, until an egg is picked or the pixling kept. */
+const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, false)
 
 const STORE_KEY = 'pixling'
 /** Where a save this version cannot read is copied before the session runs without saving. */
@@ -148,7 +154,6 @@ const CONTINUE_PROMPT =
 const RETRY_LINE = 'Trying again, in case the limit has reset...'
 const MAYBE_LINE = 'The limit may have reset by now.'
 const GIVE_UP_LINE = "I can't tell when the limit resets. Send a message when you're ready."
-const HATCH_LABEL = 'Hatch a new egg'
 
 /** Prompts no person sent: another plugin's, a background task's, a schedule's, another agent's. */
 const NOT_THE_PERSON: ReadonlySet<PromptOrigin['kind']> = new Set<PromptOrigin['kind']>([
@@ -328,8 +333,8 @@ export const register: Register = (on, options) => {
   let lastFrame: Pixels | null = null
   let svgSeenAt = 0
   let lastInvalidate = 0
-  /** The room's sprite as a terminal shows it, by its key: the frame clock repaints it in place. */
-  let roomSprite: { key: string; columns: number; rows: number; cells: string } | null = null
+  /** The room's moving pictures as a terminal shows them, by key: the frame clock repaints them in place. */
+  let roomSprites: { key: string; columns: number; rows: number; cells: string }[] = []
   let lastSoundAt = 0
   let lastTest: 'pass' | 'fail' | null = null
   let lastFailed: number | null = null
@@ -721,6 +726,7 @@ export const register: Register = (on, options) => {
       return renderHatch(
         { species: s, isShiny: p.isShiny, mood: 'celebrate', t: Math.max(0, at - hatchAt), hat, face, neck },
         RARITY_COLOR[s.rarity],
+        hatchLookOf(p),
       )
     }
     const { mood, since } = currentMood(at)
@@ -876,17 +882,25 @@ export const register: Register = (on, options) => {
   // every hook of this plugin's on what it drew, a heckled transcript's messages too. A new size
   // is the one redraw, after which the room says what it shows again.
   const paintRoom = async (port: Io, t: number): Promise<void> => {
-    const sprite = roomSprite
-    if (!sprite) return
-    const raster = rasterOf(roomFrame(t))
-    if (raster.cells === sprite.cells) return
-    if (raster.columns !== sprite.columns || raster.rows !== sprite.rows) {
-      roomSprite = null
-      port.invalidate()
-      return
+    const sprites = roomSprites
+    if (sprites.length === 0) return
+    const frames = roomFrames(t)
+    for (const sprite of sprites) {
+      const frame = frames.get(sprite.key)
+      if (!frame) continue
+      const raster = rasterOf(frame)
+      if (raster.cells === sprite.cells) continue
+      if (raster.columns !== sprite.columns || raster.rows !== sprite.rows) {
+        roomSprites = []
+        port.invalidate()
+        return
+      }
+      sprite.cells = raster.cells
+      if (!(await port.blit(ROOM_ID, sprite.key, raster.cells))) {
+        roomSprites = []
+        return
+      }
     }
-    roomSprite = { ...sprite, cells: raster.cells }
-    if (!(await port.blit(ROOM_ID, sprite.key, raster.cells))) roomSprite = null
   }
 
   /** The frame as the band's picture: a PNG, base64, sized to the form's cells. */
@@ -957,11 +971,12 @@ export const register: Register = (on, options) => {
   // PowerShell takes about half a second to start playing; start the animation with the sound.
   const latency = (): number => (platform === 'windows' || platform === 'wsl' ? 450 : 80)
 
-  const hatch = async (): Promise<void> => {
+  /** Hatches the first egg, or `chosen` from the nest, releasing the pixling. */
+  const hatch = async (chosen?: Egg): Promise<void> => {
     const port = io
-    if (!port) return
-    // The first egg starts this session's count; a later one's is set by nextEgg.
-    const egg = pixling ? nextEgg(pixling, now()) : bump(hatchPixling(Math.random, now()), 'sessions')
+    if (!port || (pixling && !chosen)) return
+    // The first egg starts this session's count; a later one's is set by hatchEgg.
+    const egg = pixling && chosen ? hatchEgg(pixling, chosen, now()) : bump(hatchPixling(Math.random, now()), 'sessions')
     pixling = touchDay(egg, now()).pixling
     await commit()
     const s = species()
@@ -1945,7 +1960,10 @@ export const register: Register = (on, options) => {
   }
   on('ui.close', async ($, e, next) => {
     const closed = await next(e)
-    if (e.id === ROOM_ID) await update($, roomOpenAtom, () => false)
+    if (e.id === ROOM_ID) {
+      await update($, roomOpenAtom, () => false)
+      await update($, nestAtom, () => false)
+    }
     return closed
   })
   const quipMode = String(options['quips'] ?? 'off')
@@ -2127,7 +2145,7 @@ export const register: Register = (on, options) => {
     '/pixling name <name> — rename it',
     '/pixling wear [item|random|none] — the wardrobe; an item puts it on, or takes it off if worn; random picks a look',
     '/pixling dex — the species you have hatched',
-    '/pixling hatch — release it and hatch a new egg (level and stats reset; badges, streak and dex stay)',
+    '/pixling hatch — from level 5, pick a new egg from its nest and release it (level and stats reset; badges, streak and dex stay)',
     '/pixling adopt — bring back your old /buddy: its name, personality, body and days together (read locally)',
     '/pixling room — open its room',
     '/pixling off — send it away: no band, sound, voice, toasts or auto-continue (stats still count)',
@@ -2175,6 +2193,7 @@ export const register: Register = (on, options) => {
     const away = isAway ? [`${p.name} is away. /pixling on brings it back.`] : []
     return [
       `${p.name} the ${species().name}, level ${levelOf(p.xp).level}. ${CARD_END}`,
+      ...(parentOf(p) ? [`Child of ${parentOf(p)!.name}.`] : []),
       `Personality: ${p.persona}`,
       ...met,
       ...quips,
@@ -2282,7 +2301,8 @@ export const register: Register = (on, options) => {
       case 'name': {
         const name = cleanName(arg)
         if (!name) return { text: 'Usage: /pixling name <new name>' }
-        pixling = { ...pixling, name }
+        // A new name starts its line afresh: its children carry this name, not the old one's.
+        pixling = { ...pixling, name, line: startLine(name) }
         persist()
         await publishView()
         await express({ mood: 'love', priority: PRIORITY.pet, line: 'rename', slots: { name } })
@@ -2364,24 +2384,14 @@ export const register: Register = (on, options) => {
       case 'dex':
         return { text: `${DEX_START}${pixling.dex.length}/${SPECIES.length} species hatched.` }
       case 'hatch': {
-        const keep = `Keep ${pixling.name}`
-        let answer = keep
-        try {
-          const egg = shinyEggOf(pixling)
-          answer = await $.ui.ask(
-            `Release ${pixling.name} and hatch ${egg ? `the shiny egg ${pixling.name} laid at level ${egg.level}` : 'a new egg'}? Level and stats start over; your badges, streak, tics and dex are kept.` +
-              (nextSeedOf(pixling) !== pixling.hatchedAt
-                ? ` ${pixling.name} hasn't matured yet (level ${MATURE_LEVEL}), so the egg is the one ${pixling.name} came from: the same ${species().name}.`
-                : ''),
-            [keep, HATCH_LABEL],
-          )
-        } catch {
-          return { text: 'Nothing changed.' }
+        const level = levelOf(pixling.xp).level
+        if (level < MATURE_LEVEL) {
+          return { text: `${pixling.name} hasn't matured yet (level ${level} of ${MATURE_LEVEL}). Keep going together a little longer before hatching a new egg.` }
         }
-        // Anything typed under "Other" is not a yes.
-        if (answer !== HATCH_LABEL) return { text: `${pixling.name} stays. ♥` }
-        await hatch()
-        return { text: 'A new egg is hatching...' }
+        // The room opens first, as the person's own ask; the nest shows in it once marked open.
+        const opening = openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name)
+        await update($, nestAtom, () => true)
+        return { text: `${await opening} Pick an egg there to hatch, or keep ${pixling.name}.` }
       }
       default:
         return { text: HELP }
@@ -2427,6 +2437,68 @@ export const register: Register = (on, options) => {
         ? `Zzz... back at ${resetTime(napping.until)} (${formatDuration(napping.until - at)})${napping.isAuto ? ', then Claude carries on' : ''}`
         : 'Zzz... napping through the limit.'
       : (said?.text ?? null)
+
+  /** The nest is on show (as the room last read it): its eggs move with the frame clock. */
+  let isNestShown = false
+  let nestCache: { key: string; eggs: Egg[] } | null = null
+
+  /** The eggs `p` lays now, worked out once per pixling and shiny egg. */
+  const nestNow = (p: Pixling): Egg[] => {
+    const key = `${p.hatchedAt}:${shinyEggOf(p) !== null}:${p.line.newer}:${p.line.side}:${p.family.length}`
+    if (nestCache?.key !== key) nestCache = { key, eggs: nestOf(p) }
+    return nestCache.eggs
+  }
+
+  /** The nest when it is open and can show: a grown pixling, not hatching. */
+  const nestShowing = (isOpen: boolean, at: number): Egg[] | null => {
+    const p = pixling
+    return isOpen && p && !isHatching(at) && levelOf(p.xp).level >= MATURE_LEVEL ? nestNow(p) : null
+  }
+
+  const eggFrame = (look: EggLook, t: number): Pixels => {
+    const px = new Int32Array(256).fill(TRANSPARENT)
+    eggPixels(look, t).forEach((c, i) => {
+      if (c !== null) px[i] = c
+    })
+    return { w: 16, h: 16, px }
+  }
+
+  const partnerFrames = new Map<string, Pixels>()
+  /** A partner as the nest shows it: idle, never shiny, the same every time. */
+  const partnerFrame = (name: string): Pixels => {
+    const known = partnerFrames.get(name)
+    if (known) return known
+    const frame = renderFrame({ species: partnerSpecies(name), isShiny: false, mood: 'idle', t: 0 })
+    partnerFrames.set(name, frame)
+    return frame
+  }
+
+  /** Every moving picture of the room at `at`, by its key. */
+  const roomFrames = (at: number): Map<string, Pixels> => {
+    const frame = roomFrame(at)
+    const frames = new Map([
+      [ROOM_EGG_KEY, frame],
+      [ROOM_SPRITE_KEY, frame],
+    ])
+    const eggs = isNestShown ? nestShowing(true, at) : null
+    eggs?.forEach((e, i) => frames.set(nestEggKey(i), eggFrame(e.look, at)))
+    return frames
+  }
+
+  /**
+   * Hatches the nest's egg of `seed`, if it is still this pixling's nest: another terminal may have
+   * hatched one since, and then the store holds that pixling and this pick does nothing.
+   */
+  const pickEgg = async (seed: number, closeNest: () => Promise<unknown>): Promise<void> => {
+    const p = pixling
+    const port = io
+    await closeNest()
+    if (!p || !port || levelOf(p.xp).level < MATURE_LEVEL) return
+    const egg = nestOf(p).find(e => e.seed === seed)
+    const stored = revive(await port.load().catch(() => null))
+    if (!egg || pixling !== p || (stored !== null && stored.hatchedAt !== p.hatchedAt)) return
+    await hatch(egg)
+  }
 
   /** The pixling as the room draws it: in place, in its mood and gear; the egg while it hatches. */
   const roomFrame = (at: number): Pixels => {
@@ -2878,19 +2950,39 @@ export const register: Register = (on, options) => {
     const squad = (await read($, roomSquad)) ?? []
     const isPlanning = (await read($, roomPlanning)) === true
     const effect = (await read($, roomEffect)) ?? null
+    const isNestOpen = (await read($, nestAtom)) === true
     const at = now()
     const tab = tabOf(room.tab)
     const frame = roomFrame(at)
     const isEgg = !pixling || isHatching(at)
+    const eggs = isAway ? null : nestShowing(isNestOpen, at)
+    isNestShown = eggs !== null
+    const nest: NestModel | null =
+      eggs && pixling
+        ? {
+            parent: pixling.name,
+            eggs: eggs.map(egg => ({
+              seed: egg.seed,
+              frame: eggFrame(egg.look, at),
+              alt: describeEgg(egg.look),
+              partner: egg.partner,
+              partnerFrame: partnerFrame(egg.partner),
+            })),
+          }
+        : null
     const columns = e.props.bodyColumns > 0 ? e.props.bodyColumns : (e.viewport?.columns ?? 40)
     const seat = seatOf(columns, e.surface === 'terminal', frame.w)
     // The pixling moves on the home shelf: the frame clock repaints a terminal's Raster in place
     // (paintRoom) and redraws what drew an SVG lately (tick).
-    const isMoving = !isAway && (tab === 'home' || isEgg)
+    const isMoving = !isAway && (tab === 'home' || isEgg || nest !== null)
     if (e.surface === 'terminal') {
-      const raster = rasterOf(frame)
-      const key = isEgg ? ROOM_EGG_KEY : ROOM_SPRITE_KEY
-      roomSprite = isMoving ? { key, columns: raster.columns, rows: raster.rows, cells: raster.cells } : null
+      const shown: [string, Pixels][] = nest ? nest.eggs.map((egg, i) => [nestEggKey(i), egg.frame]) : [[isEgg ? ROOM_EGG_KEY : ROOM_SPRITE_KEY, frame]]
+      roomSprites = isMoving
+        ? shown.map(([key, pixels]) => {
+            const raster = rasterOf(pixels)
+            return { key, columns: raster.columns, rows: raster.rows, cells: raster.cells }
+          })
+        : []
     } else if (isMoving) svgSeenAt = at
     const model: RoomModel = {
       at,
@@ -2906,6 +2998,8 @@ export const register: Register = (on, options) => {
       effect,
       isAway,
       isFocused: e.props.isFocused,
+      nest,
+      parent: pixling ? (parentOf(pixling)?.name ?? null) : null,
     }
     const act: RoomActions = {
       show: tab => {
@@ -2915,6 +3009,14 @@ export const register: Register = (on, options) => {
         void pet()
           .then(() => $.ui.invalidate('ui.render'))
           .catch(() => undefined)
+      },
+      pick: seed => {
+        void pickEgg(seed, () => update($, nestAtom, () => false))
+          .then(() => $.ui.invalidate('ui.render'))
+          .catch(() => undefined)
+      },
+      keep: () => {
+        void update($, nestAtom, () => false).catch(() => undefined)
       },
     }
     if (e.surface === 'terminal') {

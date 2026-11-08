@@ -335,6 +335,22 @@ export const squadLines = (squad: readonly PixlingsMini[], isPlanning: boolean, 
 /** One piece of the vitals row, its tone already a color. */
 export type RoomVital = { readonly text: string; readonly color: string | undefined; readonly isDim: boolean }
 
+/** One egg in the nest: its picture now, what it looks like in words, and its partner. */
+export type NestEggModel = {
+  readonly seed: number
+  readonly frame: Pixels
+  readonly alt: string
+  readonly partner: string
+  /** The partner, small and idle: drawn only where the surface draws an Svg. */
+  readonly partnerFrame: Pixels
+}
+
+/** The nest on show: the eggs `parent` laid, to pick one or keep `parent`. */
+export type NestModel = { readonly parent: string; readonly eggs: readonly NestEggModel[] }
+
+/** The key of a nest egg's picture: the frame clock repaints it in place. */
+export const nestEggKey = (i: number): string => `nest-egg-${i}`
+
 /** Everything the room draws, as the hooks read it for one drawing. */
 export type RoomModel = {
   readonly at: number
@@ -355,15 +371,27 @@ export type RoomModel = {
   readonly isAway: boolean
   /** The pane holds the keyboard: the hotkeys work, so the room names them. */
   readonly isFocused: boolean
+  /** The nest, while `/pixling hatch` has it open. */
+  readonly nest: NestModel | null
+  /** The name of the pixling it hatched from, for its card. */
+  readonly parent: string | null
 }
 
 /** What the room's Buttons do. */
-export type RoomActions = { readonly show: (tab: RoomTab) => void; readonly pet: () => void }
+export type RoomActions = {
+  readonly show: (tab: RoomTab) => void
+  readonly pet: () => void
+  /** Hatches the nest's egg of this seed, releasing the pixling. */
+  readonly pick: (seed: number) => void
+  /** Closes the nest; the pixling stays. */
+  readonly keep: () => void
+}
 
 export const drawRoom = (kit: RoomKit, seat: Seat, m: RoomModel, act: RoomActions): RenderElement => {
   const p = m.pixling
   if (m.isAway) return away(kit, p)
   if (!p || m.isHatching) return egg(kit, seat, m, p)
+  if (m.nest) return nest(kit, seat, m.nest, m.isFocused, act)
   const body = m.tab === 'garden' ? garden(kit, seat, p) : m.tab === 'badges' ? shelf(kit, seat, p) : home(kit, seat, m, p, act)
   return kit.Box({
     flexDirection: 'column',
@@ -408,6 +436,59 @@ const egg = (kit: RoomKit, seat: Seat, m: RoomModel, p: Pixling | null): RenderE
     alignItems: seat.isSideBySide ? 'center' : 'flex-start',
     columnGap: 2,
     children: [picture(kit, m.frame, seat.scale, ROOM_EGG_KEY, isHatching ? 'An egg, hatching' : 'An egg'), note],
+  })
+}
+
+const nest = (kit: RoomKit, seat: Seat, n: NestModel, isFocused: boolean, act: RoomActions): RenderElement => {
+  const { Box, Text, Button } = kit
+  const partner = (e: NestEggModel, i: number): RenderElement => {
+    // A picture shrunk to a few cells would not read on the terminal: there, the name alone.
+    if (!kit.Svg || kit.Raster) return Text({ children: `♥ ${e.partner}` })
+    const small = trim(e.partnerFrame)
+    return Box({
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: 1,
+      children: [
+        Text({ color: '#ff4d8d', children: '♥' }),
+        kit.Svg({ key: `nest-partner-${i}`, source: toSvg(small, 1), alt: e.partner, width: small.w, height: small.h }),
+        Text({ children: e.partner }),
+      ],
+    })
+  }
+  return Box({
+    key: 'room-nest',
+    flexDirection: 'column',
+    width: seat.columns,
+    children: [
+      Text({ bold: true, children: `${n.parent}'s eggs` }),
+      Text({
+        dimColor: true,
+        wrap: 'wrap',
+        children: `Pick one to hatch. ${n.parent} will be released: level and stats start over; your badges, streak, tics and dex are kept.`,
+      }),
+      Box({
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        columnGap: 3,
+        rowGap: 1,
+        marginTop: 1,
+        children: n.eggs.map((e, i) =>
+          Box({
+            key: `nest-${e.seed}`,
+            flexDirection: 'column',
+            alignItems: 'center',
+            children: [
+              picture(kit, e.frame, seat.scale, nestEggKey(i), e.alt),
+              partner(e, i),
+              Button({ key: `nest-pick-${i}`, label: 'This one', hotkey: `${i + 1}`, onPress: () => act.pick(e.seed) }),
+            ],
+          }),
+        ),
+      }),
+      Box({ marginTop: 1, children: [Button({ key: 'nest-keep', label: `Keep ${n.parent}`, hotkey: 'k', onPress: () => act.keep() })] }),
+      isFocused && seat.isTerminal ? Text({ dimColor: true, children: `1–${n.eggs.length} pick · k keep` }) : null,
+    ],
   })
 }
 
@@ -457,6 +538,7 @@ const home = (kit: RoomKit, seat: Seat, m: RoomModel, p: Pixling, act: RoomActio
         children: [Text({ bold: true, color, children: p.name }), Text({ dimColor: true, children: ` Lv ${level}` })],
       }),
       Text({ wrap: 'wrap', children: `${s.name} ${RARITY_STARS[s.rarity]} ${s.rarity}${p.isShiny ? ' · ✦ shiny' : ''}` }),
+      m.parent ? Text({ dimColor: true, wrap: 'wrap', children: `child of ${m.parent}` }) : null,
       Box({
         flexDirection: 'row',
         flexWrap: 'wrap',

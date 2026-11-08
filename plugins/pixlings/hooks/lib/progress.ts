@@ -103,12 +103,6 @@ export type Pixling = {
   adoptedFrom: AdoptedFrom | null
   /** When it was last petted; another pet waits PET_COOLDOWN_MS. */
   pettedAt: number | null
-  /**
-   * What its egg was rolled from: a birth time, the parent's when the parent had matured, else the
-   * seed the parent's own egg came from, back to the last ancestor that matured. Null for a first egg
-   * and for saves from before.
-   */
-  eggSeed: number | null
   line: Line
   /** The pixlings before it, oldest first; not itself. */
   family: Ancestor[]
@@ -193,7 +187,6 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
     stats: emptyStats(),
     lifetime: emptyLifetime(),
     pettedAt: null,
-    eggSeed: null,
     line: startLine(name),
     family: [],
     egg: null,
@@ -207,15 +200,8 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
   }
 }
 
-/**
- * A pixling below this level when released hasn't matured: the next egg comes from the same birth
- * time as its own, so it hatches the same species and name. Releasing over and over rerolls nothing.
- */
+/** Below this level a pixling hasn't matured: it can't be released, so no egg is rerolled. */
 export const MATURE_LEVEL = 5
-
-/** What the next egg is rolled from: its own birth time once it has matured, else its own egg's seed again. */
-export const nextSeedOf = (p: Pick<Pixling, 'hatchedAt' | 'eggSeed' | 'xp'>): number =>
-  p.eggSeed !== null && levelOf(p.xp).level < MATURE_LEVEL ? p.eggSeed : p.hatchedAt
 
 /** A random stream fixed by a birth time: the same seed rolls the same egg. */
 export const seededRandom = (seed: number): (() => number) => {
@@ -227,24 +213,6 @@ export const seededRandom = (seed: number): (() => number) => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-
-/** The next egg after `p`, rolled from its seed: the same until a pixling matures. */
-export const nextEgg = (p: Pixling, now: number): Pixling => {
-  const seed = nextSeedOf(p)
-  const egg = rehatch(p, seededRandom(seed), now)
-  // Hatched in a session already counted: the egg's first, but no new one for the person.
-  return { ...egg, eggSeed: seed, stats: { ...egg.stats, sessions: 1 } }
-}
-
-/** A new egg for the same person: the badges, streak, tics and dex are theirs and stay. */
-export const rehatch = (p: Pixling, random: () => number, now: number): Pixling => ({
-  ...hatchPixling(random, now, p.dex),
-  isShiny: shinyEggOf(p) !== null,
-  badges: p.badges,
-  streak: p.streak,
-  tics: p.tics,
-  lifetime: { ...p.lifetime, shinyEggs: p.lifetime.shinyEggs + (shinyEggOf(p) !== null ? 1 : 0) },
-})
 
 // Experience ------------------------------------------------------------------------------------
 
@@ -468,7 +436,6 @@ export const revive = (value: unknown): Pixling | null => {
     stats: { ...emptyStats(), ...(v.stats ?? {}) },
     lifetime: isRecord(v.lifetime) ? { ...emptyLifetime(), ...numbersOf(v.lifetime) } : seedLifetime(v, hatchedAt),
     pettedAt: typeof v.pettedAt === 'number' ? v.pettedAt : null,
-    eggSeed: typeof v.eggSeed === 'number' ? v.eggSeed : null,
     line: lineOf(v.line) ?? startLine(v.name.slice(0, 24)),
     family: Array.isArray(v.family) ? v.family.flatMap(a => ancestorFrom(a) ?? []) : [],
     egg: typeof v.egg === 'number' && Number.isFinite(v.egg) ? v.egg : null,

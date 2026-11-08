@@ -2,7 +2,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { award, BADGES, badgeTitle, howOf, progressOf, tierOf } from '../hooks/lib/badges.ts'
 import type { Badge } from '../hooks/lib/badges.ts'
-import { bump, gain, hatchPixling, mergeSave, nextEgg, rehatch, revive, shinyEggOf } from '../hooks/lib/progress.ts'
+import { hatchEgg, nestOf } from '../hooks/lib/nest.ts'
+import { bump, gain, hatchPixling, mergeSave, revive, shinyEggOf } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
 import { cellWidth, nextTitle, shelfLayout, shelfTitle } from '../hooks/lib/room.ts'
 
@@ -31,7 +32,7 @@ describe('lifetime counts', () => {
   test('a hatch keeps lifetime and resets stats', () => {
     const base = fresh()
     const p = { ...base, stats: { ...base.stats, turns: 500 }, lifetime: { ...base.lifetime, turns: 900 } }
-    const egg = rehatch(p, seeded(3), T0 + 1)
+    const egg = hatchEgg(p, nestOf(p)[0]!, T0 + 1)
     expect(egg.stats.turns).toBe(0)
     expect(egg.lifetime.turns).toBe(900)
   })
@@ -48,14 +49,15 @@ describe('lifetime counts', () => {
     expect(badge('lucky').count(merged)).toBe(1)
     expect(merged.lifetime.shinyEggs).toBe(0)
     // Hatched, the egg moves into the lifetime count, and the new egg has laid none.
-    const egg = rehatch(merged, seeded(4), T0 + 1)
+    const egg = hatchEgg(merged, nestOf(merged)[0]!, T0 + 1)
     expect(egg.lifetime.shinyEggs).toBe(1)
     expect(badge('lucky').count(egg)).toBe(1)
   })
 
   test('a hatch in a session counts the egg its session, not the person another', () => {
     const p = withLifetime({ sessions: 40 })
-    const egg = nextEgg({ ...p, stats: { ...p.stats, sessions: 7 } }, T0 + 1)
+    const parent = { ...p, stats: { ...p.stats, sessions: 7 } }
+    const egg = hatchEgg(parent, nestOf(parent)[0]!, T0 + 1)
     expect(egg.stats.sessions).toBe(1)
     expect(egg.lifetime.sessions).toBe(40)
   })

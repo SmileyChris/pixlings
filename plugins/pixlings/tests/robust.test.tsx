@@ -4,7 +4,8 @@ import type { On } from 'claude-code'
 
 import { test } from './kit.ts'
 import { wavPipeArgv, windowsPlayer, windowsSpeech, windowsToast, writeBytesArgv } from '../hooks/lib/platform.ts'
-import { emptyDay, hatchPixling, isUnreadable, mergeSave, rehatch, revive } from '../hooks/lib/progress.ts'
+import { hatchEgg, nestOf } from '../hooks/lib/nest.ts'
+import { emptyDay, hatchPixling, isUnreadable, mergeSave, revive } from '../hooks/lib/progress.ts'
 import type { Pixling } from '../hooks/lib/progress.ts'
 
 const NOON = Date.parse('2026-10-03T12:00:00Z')
@@ -402,60 +403,45 @@ describe('the save', () => {
     expect(db.get('pixlingBackup')).toEqual(future)
   })
 
-  test('re-hatching keeps the badges, the streak and the tics', async ($, on) => {
-    const stored = {
-      ...DUCK,
-      xp: 5000,
-      badges: { hello: 1, exterminator: 2 },
-      streak: { last: '2026-10-02', days: 4, best: 9 },
-      tics: { absolutelyRight: 7 },
-    }
-    const { clock, db } = host(on, stored)
+  test("an immature pixling can't be released", async ($, on) => {
+    const { clock, db } = host(on, { ...DUCK, xp: 0 })
     const asked = answering(on, 'Hatch a new egg')
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(3000)
     const out = await $.command.run({ command: 'pixling', args: 'hatch' } as never)
-    expect(out.text).toContain('A new egg is hatching')
+    expect(out.text).toBe("Quackers hasn't matured yet (level 1 of 5). Keep going together a little longer before hatching a new egg.")
     await clock.advance(6000)
-    const now = db.get('pixling') as { xp: number; hatchedAt: number; badges: Record<string, number>; streak: { best: number }; tics: Record<string, number> }
-    expect(now.hatchedAt).not.toBe(DUCK.hatchedAt)
-    expect(now.badges['exterminator']).toBe(2)
-    expect(now.streak.best).toBe(9)
-    expect(now.tics['absolutelyRight']).toBe(7)
-    expect(asked[0]).toMatch(/badges/)
+    expect((db.get('pixling') as { hatchedAt: number }).hatchedAt).toBe(DUCK.hatchedAt)
+    expect(asked).toEqual([])
   })
 
-  test('released young, the egg is the one it came from, and the prompt says so; grown, it says nothing', async ($, on) => {
-    const { clock, db } = host(on, { ...DUCK, xp: 0, eggSeed: 1_600_000_000_000 })
-    const asked = answering(on, 'Hatch a new egg')
+  test('a rename starts the line afresh from the new name', async ($, on) => {
+    const { clock, db } = host(on, { ...DUCK, line: { newer: 'Waffles', side: 'end', isStart: false }, family: [{ name: 'Juniper', species: 'cat', newer: 'Juniper', isStart: true, hatchedAt: 1, releasedAt: 2 }] })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     await clock.advance(3000)
-    await $.command.run({ command: 'pixling', args: 'hatch' } as never)
-    await clock.advance(6000)
-    expect(asked[0]).toContain("hasn't matured yet")
-    expect((db.get('pixling') as { eggSeed: number }).eggSeed).toBe(1_600_000_000_000)
-  })
-
-  test('a grown pixling hatches from its own birth time, and the prompt has no note', async ($, on) => {
-    const { clock, db } = host(on, { ...DUCK, xp: 5000, eggSeed: 1_600_000_000_000 })
-    const asked = answering(on, 'Hatch a new egg')
-    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-    await clock.advance(3000)
-    await $.command.run({ command: 'pixling', args: 'hatch' } as never)
-    await clock.advance(6000)
-    expect(asked[0]).not.toContain("hasn't matured")
-    expect((db.get('pixling') as { eggSeed: number }).eggSeed).toBe(DUCK.hatchedAt)
-  })
-
-  test('free text typed into the release dialog does not release the pixling', async ($, on) => {
-    const { clock, db } = host(on, { ...DUCK, xp: 5000 })
-    answering(on, 'no, keep him')
-    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-    await clock.advance(3000)
-    const out = await $.command.run({ command: 'pixling', args: 'hatch' } as never)
+    await $.command.run({ command: 'pixling', args: 'name Bob' } as never)
     await clock.advance(1000)
-    expect(out.text).not.toContain('A new egg is hatching')
-    expect((db.get('pixling') as { xp: number }).xp).toBeGreaterThanOrEqual(5000)
+    const now = db.get('pixling') as { line: unknown; family: unknown[] }
+    expect(now.line).toEqual({ newer: 'Bob', side: 'start', isStart: true })
+    expect(now.family.length).toBe(1)
+  })
+
+  test('a mature pixling opens its nest without asking, and nothing changes until an egg is picked', async ($, on) => {
+    const { clock, db } = host(on, { ...DUCK, xp: 5000 })
+    const asked = answering(on, 'Hatch a new egg')
+    const opened: string[] = []
+    on('ui.open', ($, e) => {
+      opened.push(e.id)
+      return { value: { isPlaced: true } } as never
+    })
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.advance(3000)
+    const out = await $.command.run({ command: 'pixling', args: 'hatch' } as never)
+    expect(opened).toEqual(['pixling-room'])
+    expect(out.text).toContain("Quackers's room")
+    expect(asked).toEqual([])
+    await clock.advance(6000)
+    expect((db.get('pixling') as { hatchedAt: number }).hatchedAt).toBe(DUCK.hatchedAt)
   })
 })
 
@@ -642,7 +628,7 @@ describe('merge on save', () => {
     expect(merged.streak).toEqual({ last: '2026-10-03', days: 1, best: 6 })
     expect(merged.tics).toEqual({ robust: 3 })
     // Our own re-hatch is the later one: it wins over the old egg in the store.
-    const mine = rehatch(ours, () => 0.5, base.hatchedAt + 2000)
+    const mine = hatchEgg(ours, nestOf(ours)[0]!, base.hatchedAt + 2000)
     expect(mergeSave(base, base, mine).hatchedAt).toBe(mine.hatchedAt)
   })
 
@@ -669,7 +655,7 @@ describe('merge on save', () => {
 
   test('re-hatching keeps what is the person’s; an unreadable save is told apart from an empty one', () => {
     const p = egg({ badges: { hello: 1, exterminator: 3 }, streak: { last: '2026-10-03', days: 4, best: 8 }, tics: { delve: 2 }, dex: ['duck', 'owl'] })
-    const next = rehatch(p, () => 0.99, NOON)
+    const next = hatchEgg(p, nestOf(p)[0]!, NOON)
     expect(next.hatchedAt).toBe(NOON)
     expect(next.xp).toBe(0)
     expect(next.badges).toEqual(p.badges)

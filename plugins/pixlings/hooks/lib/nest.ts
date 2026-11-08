@@ -8,6 +8,7 @@ import { blend, freshName } from './names.ts'
 import { personaFor } from './persona.ts'
 import { ancestorOf, hatchPixling, rollSpecies, seededRandom, shinyEggOf, usedNames } from './progress.ts'
 import type { Pixling } from './progress.ts'
+import { speciesById } from './sprites.ts'
 import type { Species } from './sprites.ts'
 
 export type Egg = {
@@ -71,4 +72,10 @@ export const hatchEgg = (parent: Pixling, egg: Egg, now: number): Pixling => {
     // Hatched in a session already counted: the egg's first, but no new one for the person.
     stats: { ...fresh.stats, sessions: 1 },
   }
+}
+
+/** The egg a pixling hatched from, to draw its hatch: none for a first egg or a save from before. */
+export const hatchLookOf = (p: Pixling): EggLook | null => {
+  const species = speciesById(p.species)
+  return p.egg !== null && species ? eggLookOf(p.egg, species.rarity, p.isShiny) : null
 }
