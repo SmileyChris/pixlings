@@ -66,6 +66,8 @@ const GLINT_MS = 480
 
 type Point = readonly [number, number]
 
+const LOOK_SALT = 0x9e3779b9
+
 /** A pattern pixel: the mark colour, or (dappled) a tint a shade off the shell. */
 type Spot = 'mark' | 'tint'
 
@@ -92,7 +94,8 @@ const RIM: readonly Point[] = EGG_SHAPE.flatMap((row, y) => [...row].flatMap((c,
 
 /** The egg `seed` lays, holding a `rarity`: the same seed is always the same egg. */
 export const eggLookOf = (seed: number, rarity: Rarity, isShiny: boolean): EggLook => {
-  const r = seededRandom(seed)
+  // Its own stream, apart from the one its species is rolled from: a look must not give that away.
+  const r = seededRandom(Math.imul(seed ^ LOOK_SALT, 0x85ebca6b) >>> 0)
   const pattern = PATTERNS[Math.floor(r() * PATTERNS.length)] ?? 'speckled'
   const shell = SHELL_IDS[Math.floor(r() * SHELL_IDS.length)] ?? 'cream'
   const ph = r() * 6.28

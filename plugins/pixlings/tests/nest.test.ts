@@ -213,3 +213,18 @@ describe('the nest', () => {
     for (const egg of nest) expect(egg.name.startsWith('Mi')).toBe(true)
   })
 })
+
+describe('what an egg gives away', () => {
+  test('the look is its own roll: every mark comes in every pattern, and a species in many shells', () => {
+    const patterns: Record<string, Set<string>> = {}
+    const shells: Record<string, Set<string>> = {}
+    for (let i = 0; i < 5000; i++) {
+      for (const egg of nestOf(grown('Juniper', T0 + i * 7))) {
+        ;(patterns[egg.look.mark] ??= new Set()).add(egg.look.pattern)
+        ;(shells[egg.species.id] ??= new Set()).add(egg.look.shell)
+      }
+    }
+    for (const [mark, seen] of Object.entries(patterns)) expect(seen.size, mark).toBe(5)
+    for (const id of ['blip', 'duck', 'cat', 'snail', 'rabbit', 'chonk']) expect(shells[id]!.size, id).toBeGreaterThanOrEqual(4)
+  })
+})
