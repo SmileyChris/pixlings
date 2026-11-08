@@ -102,8 +102,11 @@ const vitalsAtom = atom({ plugin: 'pixlings', key: 'vitals' } as const, [] as Pi
 const cacheAtom = atom({ plugin: 'pixlings', key: 'cache' } as const, null as PixlingsCache)
 /** Whether the room is open, so the band leaves out its door to it. */
 const roomOpenAtom = atom({ plugin: 'pixlings', key: 'isRoomOpen' } as const, false)
-/** Whether `/pixling hatch` has the nest open in the room, until an egg is picked or the pixling kept. */
-const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, false)
+/**
+ * The birth time of the pixling whose nest `/pixling hatch` opened, until an egg is picked, it is
+ * kept or the room closes: the nest shows only for that pixling, never for one that came after.
+ */
+const nestAtom = atom({ plugin: 'pixlings', key: 'nest' } as const, null as number | null)
 
 const STORE_KEY = 'pixling'
 /** Where a save this version cannot read is copied before the session runs without saving. */
@@ -1948,21 +1951,22 @@ export const register: Register = (on, options) => {
     open: (pane: { id: string; title: string }) => Promise<{ isPlaced: true } | { isPlaced: false; reason: string }>
     markOpen: () => Promise<unknown>
   }
-  const openRoom = async (port: RoomPort, name: string): Promise<string> => {
+  /** Opens the room: what to tell the person, and whether it opened or waits for space to. */
+  const openRoom = async (port: RoomPort, name: string): Promise<{ text: string; isOpen: boolean }> => {
     const title = `${name}'s room`
     try {
       const opened = await port.open({ id: ROOM_ID, title })
       await port.markOpen()
-      return opened.isPlaced ? `${title} is open.` : `${title} opens once there is space for it: ${opened.reason}`
+      return { text: opened.isPlaced ? `${title} is open.` : `${title} opens once there is space for it: ${opened.reason}`, isOpen: true }
     } catch {
-      return `${title} could not open here.`
+      return { text: `${title} could not open here.`, isOpen: false }
     }
   }
   on('ui.close', async ($, e, next) => {
     const closed = await next(e)
     if (e.id === ROOM_ID) {
       await update($, roomOpenAtom, () => false)
-      await update($, nestAtom, () => false)
+      await update($, nestAtom, () => null)
     }
     return closed
   })
@@ -2234,7 +2238,9 @@ export const register: Register = (on, options) => {
   }
 
   on('command.run', { command: 'pixling' }, async ($, e) => {
-    await whenLoaded((ms, fn) => $.clock.after(ms, fn))
+    // Loaded already, no await comes before a command's own: `/pixling hatch` and `room` open the
+    // room as the person's ask, which an await before it would lose on a narrow terminal.
+    if (!pixling) await whenLoaded((ms, fn) => $.clock.after(ms, fn))
     if (!pixling) return { text: 'Your egg has not hatched yet.' }
     const [sub = '', ...rest] = e.args.trim().split(/\s+/)
     const arg = rest.join(' ').trim()
@@ -2261,7 +2267,7 @@ export const register: Register = (on, options) => {
           sub.toLowerCase() === 'off',
         )
       case 'room':
-        return { text: await openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name) }
+        return { text: (await openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name)).text }
       case 'badges': {
         const p = pixling
         return { text: [`Badges ${earnedBadges(p).length}/${BADGES.length}`, ...badgeLines(p)].join('\n') }
@@ -2389,9 +2395,11 @@ export const register: Register = (on, options) => {
           return { text: `${pixling.name} hasn't matured yet (level ${level} of ${MATURE_LEVEL}). Keep going together a little longer before hatching a new egg.` }
         }
         // The room opens first, as the person's own ask; the nest shows in it once marked open.
-        const opening = openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, pixling.name)
-        await update($, nestAtom, () => true)
-        return { text: `${await opening} Pick an egg there to hatch, or keep ${pixling.name}.` }
+        const p = pixling
+        const opened = await openRoom({ open: pane => $.ui.open(pane), markOpen: () => update($, roomOpenAtom, () => true) }, p.name)
+        if (!opened.isOpen) return { text: opened.text }
+        await update($, nestAtom, () => p.hatchedAt)
+        return { text: `${opened.text} Pick an egg there to hatch, or keep ${p.name}.` }
       }
       default:
         return { text: HELP }
@@ -2496,7 +2504,12 @@ export const register: Register = (on, options) => {
     if (!p || !port || levelOf(p.xp).level < MATURE_LEVEL) return
     const egg = nestOf(p).find(e => e.seed === seed)
     const stored = revive(await port.load().catch(() => null))
-    if (!egg || pixling !== p || (stored !== null && stored.hatchedAt !== p.hatchedAt)) return
+    if (stored !== null && stored.hatchedAt !== p.hatchedAt) {
+      // Another terminal hatched first: take in its pixling, as a save would.
+      await commit()
+      return
+    }
+    if (!egg || pixling !== p) return
     await hatch(egg)
   }
 
@@ -2950,7 +2963,8 @@ export const register: Register = (on, options) => {
     const squad = (await read($, roomSquad)) ?? []
     const isPlanning = (await read($, roomPlanning)) === true
     const effect = (await read($, roomEffect)) ?? null
-    const isNestOpen = (await read($, nestAtom)) === true
+    const nestFor = await read($, nestAtom)
+    const isNestOpen = pixling !== null && nestFor === pixling.hatchedAt
     const at = now()
     const tab = tabOf(room.tab)
     const frame = roomFrame(at)
@@ -3011,12 +3025,12 @@ export const register: Register = (on, options) => {
           .catch(() => undefined)
       },
       pick: seed => {
-        void pickEgg(seed, () => update($, nestAtom, () => false))
+        void pickEgg(seed, () => update($, nestAtom, () => null))
           .then(() => $.ui.invalidate('ui.render'))
           .catch(() => undefined)
       },
       keep: () => {
-        void update($, nestAtom, () => false).catch(() => undefined)
+        void update($, nestAtom, () => null).catch(() => undefined)
       },
     }
     if (e.surface === 'terminal') {

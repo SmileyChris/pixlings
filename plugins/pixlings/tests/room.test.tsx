@@ -796,8 +796,9 @@ describe('the heckle', () => {
 describe('the nest', () => {
   const GROWN = { ...DUCK, xp: 5000 }
 
-  /** A session, then `/pixling hatch` once it has loaded. */
-  const hatchCommand = async ($: { session: { start: (e: never) => Promise<unknown> }; command: { run: (e: never) => Promise<{ text: string }> } }, clock: { advance: (ms: number) => Promise<unknown> }): Promise<void> => {
+  /** A session where the room opens, then `/pixling hatch` once it has loaded. */
+  const hatchCommand = async ($: { session: { start: (e: never) => Promise<unknown> }; command: { run: (e: never) => Promise<{ text: string }> } }, on: On, clock: { advance: (ms: number) => Promise<unknown> }): Promise<void> => {
+    on('ui.open', () => ({ value: { isPlaced: true } }) as never)
     await start($)
     await clock.advance(3000)
     await $.command.run({ command: 'pixling', args: 'hatch' } as never)
@@ -806,7 +807,7 @@ describe('the nest', () => {
 
   test('a mature pixling opens its nest, and keeping it changes nothing', { timeoutMs: LONG }, async ($, on) => {
     const { clock, db } = host(on, GROWN)
-    await hatchCommand($, clock)
+    await hatchCommand($, on, clock)
     const ui = await $.ui.mount(pane('terminal', 100))
     const stored = revive(db.get('pixling'))!
     expect(await ui.find({ type: 'Button', key: 'nest-pick-0' })).toBeDefined()
@@ -823,7 +824,7 @@ describe('the nest', () => {
 
   test("picking an egg hatches it and keeps the person's things", { timeoutMs: LONG }, async ($, on) => {
     const { clock, db } = host(on, { ...GROWN, badges: { hello: 1, liftoff: 2, exterminator: 2 }, streak: { last: '2026-10-03', days: 4, best: 9 } })
-    await hatchCommand($, clock)
+    await hatchCommand($, on, clock)
     const ui = await $.ui.mount(pane('terminal', 100))
     const egg = nestOf(revive(db.get('pixling'))!)[1]!
     await ui.press({ key: 'nest-pick-1' })
@@ -841,7 +842,7 @@ describe('the nest', () => {
 
   test('the nest names no rarity', { timeoutMs: LONG }, async ($, on) => {
     const { clock, db } = host(on, GROWN)
-    await hatchCommand($, clock)
+    await hatchCommand($, on, clock)
     const nest = nestOf(revive(db.get('pixling'))!)
     for (const surface of SURFACES) {
       const ui = await $.ui.mount(pane(surface, 100))
@@ -856,7 +857,7 @@ describe('the nest', () => {
 
   test('a pick after another terminal hatched does nothing', { timeoutMs: LONG }, async ($, on) => {
     const { clock, db } = host(on, GROWN)
-    await hatchCommand($, clock)
+    await hatchCommand($, on, clock)
     const ui = await $.ui.mount(pane('terminal', 100))
     // Another terminal picked first: the store holds its new pixling.
     const theirs = { ...hatchPixling(() => 0.3, NOON + 1000), name: 'Elsewhere' }
@@ -866,6 +867,40 @@ describe('the nest', () => {
     const now = db.get('pixling') as Pixling
     expect(now.hatchedAt).toBe(theirs.hatchedAt)
     expect(now.name).toBe('Elsewhere')
+    // This terminal takes in the other's pixling, rather than going on as the one released.
+    expect((await $.command.run({ command: 'pixling', args: 'card' } as never)).text).toContain('Elsewhere')
+    expect(await ui.find({ type: 'Button', key: 'nest-pick-0' })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('a nest opened for one pixling never shows for another', { timeoutMs: LONG }, async ($, on) => {
+    const { clock, db } = host(on, GROWN)
+    await hatchCommand($, on, clock)
+    // Another terminal picked, and its new pixling has grown since: this one saves and takes it in.
+    const theirs = { ...hatchPixling(() => 0.3, NOON + 1000), name: 'Elsewhere', xp: 5000 }
+    db.set('pixling', JSON.parse(JSON.stringify(theirs)))
+    await $.command.run({ command: 'pixling', args: 'pet' } as never)
+    await clock.advance(2000)
+    expect((await $.command.run({ command: 'pixling', args: 'card' } as never)).text).toContain('Elsewhere')
+    const ui = await $.ui.mount(pane('terminal', 100))
+    expect(await ui.find({ type: 'Button', key: 'nest-pick-0' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'tab-home' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a room that cannot open leaves no nest behind', { timeoutMs: LONG }, async ($, on) => {
+    const { clock } = host(on, GROWN)
+    on('ui.open', () => {
+      throw new Error('no panes here')
+    })
+    await start($)
+    await clock.advance(3000)
+    const out = await $.command.run({ command: 'pixling', args: 'hatch' } as never)
+    expect(out.text).toContain('could not open here')
+    expect(out.text).not.toContain('Pick an egg there')
+    await clock.advance(200)
+    const ui = await $.ui.mount(pane('terminal', 100))
+    expect(await ui.find({ type: 'Button', key: 'nest-pick-0' })).toBeUndefined()
     await ui.unmount()
   })
 
@@ -879,7 +914,7 @@ describe('the nest', () => {
 
   test('the card names the parent', { timeoutMs: LONG }, async ($, on) => {
     const { clock } = host(on, GROWN)
-    await hatchCommand($, clock)
+    await hatchCommand($, on, clock)
     const ui = await $.ui.mount(pane('terminal', 100))
     await ui.press({ key: 'nest-pick-0' })
     await clock.advance(6000)
