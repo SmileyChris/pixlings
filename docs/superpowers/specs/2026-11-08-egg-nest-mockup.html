@@ -1,0 +1,733 @@
+<title>Pixling Egg Looks</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column. The nest (two eggs to pick from) leads, then the groups, every look, and shine compared. */
+:root {
+  --bg: #f2f0f5;
+  --surface: #ffffff;
+  --nest: #e8e2d6;
+  --nest-edge: #d3cab8;
+  --ink: #1f1b2b;
+  --muted: #615b72;
+  --line: #dcd7e4;
+  --accent: #9a6400;
+  --focus: #6b4bd0;
+  --display: "Pixelify Sans", "Courier New", monospace;
+  --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121118; --surface: #1b1a23; --nest: #211f2a; --nest-edge: #34313f;
+    --ink: #ece9f3; --muted: #a39eb3; --line: #2e2c39; --accent: #ffc53d; --focus: #b49cff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121118; --surface: #1b1a23; --nest: #211f2a; --nest-edge: #34313f;
+  --ink: #ece9f3; --muted: #a39eb3; --line: #2e2c39; --accent: #ffc53d; --focus: #b49cff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); line-height: 1.05; }
+h2 { font-size: 1.45rem; }
+p { margin: 0; max-width: 65ch; }
+.lede { color: var(--muted); }
+header { display: grid; gap: 10px; }
+section { display: grid; gap: 14px; }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.field { display: flex; align-items: center; gap: 8px; font-size: .92rem; color: var(--muted); }
+.field input[type=number] { width: 7.5em; font: 600 .95rem var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+button, .seg label {
+  font: 700 .92rem var(--body); cursor: pointer; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 7px 12px;
+}
+button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button:focus-visible, input:focus-visible + span, .seg input:focus-visible + span, .egg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.seg label { border: 0; border-radius: 0; padding: 0; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; padding: 7px 12px; }
+.seg input:checked + span { background: var(--ink); color: var(--bg); }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: .92rem; cursor: pointer; }
+.check input { width: 17px; height: 17px; accent-color: var(--accent); }
+
+/* The nest */
+.nest {
+  background: var(--nest); border: 1px solid var(--nest-edge); border-radius: 14px;
+  padding: 28px 16px 22px; display: grid; gap: 18px; justify-items: center;
+}
+.pair { display: flex; gap: clamp(20px, 8vw, 80px); justify-content: center; flex-wrap: wrap; }
+.egg {
+  display: grid; justify-items: center; gap: 8px; background: none; border: 0; padding: 6px;
+  color: inherit; cursor: pointer; border-radius: 10px; transition: opacity .4s;
+}
+.egg[disabled] { cursor: default; }
+.egg.faded { opacity: .28; }
+.egg canvas { width: 176px; height: 176px; }
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; max-width: 100%; }
+.cap { display: none; }
+.cap .look { font: 500 1.05rem var(--display); }
+.cap .meta { font-size: .85rem; color: var(--muted); display: flex; gap: 8px; }
+.shiny-tag { color: var(--accent); font-weight: 700; }
+.reveal { min-height: 1.6em; font: 700 1.1rem var(--display); text-align: center; text-wrap: balance; }
+.reveal small { display: block; font: .88rem var(--body); color: var(--muted); margin-top: 4px; }
+.hint { font-size: .88rem; color: var(--muted); text-align: center; }
+
+/* Groups */
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.group { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+.group canvas { width: 64px; height: 64px; }
+.group b { font-family: var(--display); font-weight: 500; font-size: 1.1rem; display: block; }
+.group .odds { font: 600 .85rem var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.group p { font-size: .86rem; color: var(--muted); }
+
+/* Grid of every look */
+.scroll { overflow-x: auto; }
+table.looks { border-collapse: collapse; min-width: 560px; width: 100%; }
+.looks th { font: 600 .78rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 6px; text-align: center; }
+.looks th[scope=row] { text-align: left; font: 500 1rem var(--display); text-transform: none; letter-spacing: 0; color: var(--ink); }
+.looks td { padding: 4px; text-align: center; }
+.looks canvas { width: 64px; height: 64px; margin: 0 auto; }
+.looks tr.cycle { cursor: pointer; }
+.looks tr.cycle:hover td, .looks tr.cycle:hover th { background: var(--nest); }
+.rowbtn { font: 500 1rem var(--display); border: 0; background: none; padding: 4px 2px; color: var(--ink); white-space: nowrap; }
+.rowbtn span { color: var(--muted); font-family: var(--body); }
+
+/* Shine compare */
+.shine { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.shine figure { margin: 0; background: var(--nest); border: 1px solid var(--nest-edge); border-radius: 10px; padding: 16px; display: grid; justify-items: center; gap: 10px; }
+.shine canvas { width: 128px; height: 128px; }
+.shine figcaption { font-size: .88rem; color: var(--muted); text-align: center; max-width: 34ch; }
+.shine figcaption b { color: var(--ink); display: block; font-family: var(--display); font-weight: 500; font-size: 1.05rem; }
+
+.tree { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.gen { display: grid; grid-template-columns: 3.2rem 1fr; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.gen:first-child { border-top: 0; }
+.gen-n { font: 600 .78rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding-top: 14px; }
+.gen-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; min-width: 0; }
+.pick { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; text-align: left; border: 1px solid transparent; background: none; padding: 4px 8px 4px 4px; border-radius: 8px; color: inherit; cursor: pointer; font: inherit; }
+.pick .pics { grid-row: span 2; display: flex; align-items: center; gap: 4px; }
+.pick canvas { width: 48px; height: 48px; }
+.pick.chosen .pix-c { width: 64px; height: 64px; }
+.arrow { color: var(--muted); font-size: .9rem; align-self: center; }
+.pick .pics { align-items: end; }
+.mate { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
+.heart { color: #e0607e; }
+.heart.couple { font-size: 1.3rem; margin: 0 -6px; }
+.pick.partner { border-style: dashed; }
+.pick canvas.mate-c, .pick.open canvas.mate-c { width: 20px; height: 20px; }
+.pick .nm { font: 500 1.05rem var(--display); }
+.pick .src { font-size: .8rem; color: var(--muted); }
+.pick.chosen { background: var(--surface); border-color: var(--line); cursor: default; }
+.pick.other { opacity: .42; }
+.pick.other:hover, .pick.other:focus-visible { opacity: .85; }
+.pick.open { background: var(--nest); border-color: var(--nest-edge); }
+.pick.open canvas { width: 64px; height: 64px; }
+.pick:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.stars { color: var(--accent); font-size: .8rem; letter-spacing: .05em; }
+.questions { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; max-width: 70ch; }
+.questions li { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; }
+@media (prefers-reduced-motion: reduce) { .egg { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Pixling Egg Looks</h1>
+    <p class="lede">At a hatch, two eggs are laid and you keep one. Each egg's pattern and colour come from its seed and a mark on top shows its rarity group. A shiny egg comes as a third egg, and only its shine gives it away. Click an egg to hatch it.</p>
+  </header>
+
+  <section aria-label="Pick an egg">
+    <div class="controls">
+      <label class="field">Seed <input id="seed" type="number" min="0" step="1" value="2026"></label>
+      <button id="reroll" class="primary" type="button">New pair</button>
+      <label class="check"><input id="shiny" type="checkbox" checked> A shiny egg was laid</label>
+    </div>
+    <div class="nest">
+      <div class="pair">
+        <button class="egg" id="egg0" type="button"><canvas width="16" height="16"></canvas><span class="cap"></span></button>
+        <button class="egg" id="egg1" type="button"><canvas width="16" height="16"></canvas><span class="cap"></span></button>
+        <button class="egg" id="egg2" type="button"><canvas width="16" height="16"></canvas><span class="cap"></span></button>
+      </div>
+      <div class="reveal" id="reveal" aria-live="polite"></div>
+      <p class="hint" id="hint">A shiny egg comes as a third egg, told apart only by its shine. The parent is Miffles (Miso + Waffles), so this hatch keeps Waffles on the end and rolls a new start.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Family line</h2>
+    <p>Pick eggs one after another, with no hatching, to watch a line grow. Each egg shows its other parent; its own name stays hidden until you pick it. The newest name in each pixling carries on, on the same side, and a new roll fills the other half. Click a faded egg in an earlier generation to go back and take that branch instead.</p>
+    <div class="controls">
+      <button id="line-new" type="button">Start a new line</button>
+      <label class="check"><input id="line-shiny" type="checkbox"> Shiny egg in the next nest</label>
+    </div>
+    <ol class="tree" id="tree"></ol>
+  </section>
+
+  <section>
+    <h2>The four groups</h2>
+    <p>The groups are named for how they look, not ranked. Epic and legendary share Gilded. The light through the cracks gives a legendary away at the last moment: gold instead of purple.</p>
+    <div class="groups" id="groups"></div>
+  </section>
+
+  <section>
+    <h2>Every look</h2>
+    <p>Five natural patterns, the kind real eggs have, and six shell colours make 30 base looks. Dusted is Crowned turned upside down: its speckles settle toward the base, leaving the top clear for a gold cap. The spots, speckles, blotches, veins and flecks all move with the seed, so two eggs with the same look still differ.</p>
+    <p class="lede">Click a row to step its eggs through the shell colours.</p>
+    <div class="scroll"><table class="looks" id="looks"></table></div>
+  </section>
+
+  <section>
+    <h2>Still to decide</h2>
+    <ul class="questions">
+      <li>Should each egg show the name its pixling would get, so the name is part of the choice, or stay a surprise until it hatches?</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+  const EGG = [
+    '................','................','......KKKK......','.....KWWWWK.....',
+    '....KWWLWWWK....','...KWWLWWWWWK...','...KWWWWWSWWK...','..KWWWWWSSWWWK..',
+    '..KWSWWWWWWWWK..','..KWSSWWWWWLWK..','..KWWWWWWWLWWK..','..KWWWWWWWWWSK..',
+    '...KWWWWWWWSK...','...KSWWWWWSSK...','....KKSSSSKK....','......KKKK......',
+  ];
+  const CRACKS = [[[6,6],[7,7],[8,6]], [[5,7],[9,7],[10,6],[4,8]], [[11,7],[3,8],[12,8],[7,8]]];
+  const at = (x, y) => (EGG[y] || '')[x] || '.';
+  const inside = (x, y) => 'WLS'.includes(at(x, y));
+  const RIM = [];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (at(x, y) === 'K') RIM.push([x, y]);
+  const EGG_RIM = RIM;
+
+  /** The 18 species, copied from lib/sprites.ts: body art, palettes, eyes, mouth and cheeks. */
+  const SPECIES_DATA = [{"id":"blip","name":"Blip","rarity":"common","art":["................","................","................","................","......KKKK......","....KKLLLBKK....","...KLLBBBBBBK...","..KLBBBBBBBBBK..","..KLBBBBBBBBBK..",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBSK.",".KBBBBBBBBBBSSK.","..KSBBBBBBBSSK..","...KKKKKKKKKK...","................"],"palette":{"K":2055738,"B":6279034,"L":11859392,"S":4170588},"shiny":{"K":4857699,"B":13073919,"L":15652095,"S":10178521},"eyes":[[5,8],[9,8]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,11],"cheeks":[[3,10],[12,10]]},{"id":"duck","name":"Duck","rarity":"common","art":["................",".......KK.......",".....KKBKKK.....","....KLBBBBBK....","...KLBBBBBBBK...","...KBBBBBBBBK...","...KBBBBBBBBK...","...KBBAAAABBK...","...KBAAAAAABK...","..KKBBAAAABBKK..",".KBBKBBBBBBKBBK.","KBLBBKBBBBKBBBSK","KBBBBBBBBBBBBBSK","KSBBBBBBBBBBBSSK",".KSSSSSSSSSSSSK.","..KKKKKKKKKKKK.."],"palette":{"K":8014354,"B":16767050,"L":16774064,"S":14723370,"A":16747050},"shiny":{"K":1981050,"B":8175871,"L":14216447,"S":4163289,"A":16753210},"eyes":[[5,5],[9,5]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":null,"cheeks":[[4,7],[11,7]]},{"id":"cat","name":"Cat","rarity":"common","art":["................","..KK........KK..","..KAK......KAK..","..KAAKKKKKKAAK..","..KBLBBBBBBBBK..",".KBLBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBSK.","..KBBBBBBBBBSK..","...KKBBBBBBKK.K.","...KBBBBBBBBKKBK","...KBBBBBBBSKBK.","...KBKBBBBKSKK..","...KKKKKKKKKK..."],"palette":{"K":3877439,"B":15967834,"L":16765857,"S":13072949,"A":16752309},"shiny":{"K":1381663,"B":5133171,"L":9081016,"S":3422288,"A":10416383},"eyes":[[4,6],[10,6]],"eyeSize":[2,2],"eyeColor":1774628,"shinyEyeColor":16765503,"mouth":[6,8],"cheeks":[[3,8],[12,8]]},{"id":"snail","name":"Snail","rarity":"common","art":["................","................",".........LB..BL.","...KKKK...K..K..",".KKAAAAKK.K..K..",".KAQQQQAK.K..K..","KAQAAAAQAKKKKKK.","KAQAQQAQKLBBBBBK","KAQAQAAQKBBBBBBK","KAQAAQQAKBBBBBBK","KAAQAAAAKBBBBBBK",".KAAQQQAKBBBBBBK",".KKAAAAKKBBBBBSK","KBBKKKKBBBBBBBSK",".KSSSSSSSSSSSSK.","..KKKKKKKKKKKK.."],"palette":{"K":5913124,"B":15784360,"L":16773846,"S":13214830,"A":14713930,"Q":11031338},"shiny":{"K":3813210,"B":13166335,"L":15661055,"S":9418457,"A":13073919,"Q":8077252},"eyes":[[10,8],[13,8]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[10,11],"cheeks":[[9,10],[13,10]]},{"id":"rabbit","name":"Rabbit","rarity":"common","art":["...KK......KK...","..KLAK....KASK..","..KLAK....KASK..","..KBAK....KASK..","..KBAK....KASK..","..KBAKKKKKKASK..",".KBBLLBBBBBBSSK.",".KBLBBBBBBBBBSK.","KBBBBBBBBBBBBBSK","KBBBBBBBBBBBBBSK","KBBBBBBNNBBBBBSK",".KBBBBBBBBBBBSK.","..KKBBBBBBBBKK..","..KBWWWWWWWWSK..","..KBWWWWWWWWSK..","..KKKKKKKKKKKK.."],"palette":{"K":4932960,"B":13223128,"L":15657973,"S":10393525,"A":16753592,"W":16447741,"N":16743836},"shiny":{"K":4006932,"B":9067068,"L":12158307,"S":7029289,"A":16757697,"W":15983564,"N":16748453},"eyes":[[5,8],[9,8]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,11],"cheeks":[[3,10],[11,10]]},{"id":"chonk","name":"Chonk","rarity":"common","art":["................","................","..KK........KK..","..KAK......KAK..","..KAAKKKKKKAAK..",".KBBBTBBBBTBBBK.","KBBBBBTBBTBBBBBK","KBBBBBBBBBBBBBBK","KBBBBBBBBBBBBBBK","KBBBBBBBBBBBBBBK","KTBBBBLLLLBBBBTK","KBBBBLLLLLLBBBBK","KTBBBLLLLLLBBBTK","KBBBBBLLLLBBBBSK","KSBBBBBBBBBBBSSK",".KKKKKKKKKKKKKK."],"palette":{"K":3026488,"B":10133677,"T":7041408,"L":14672874,"S":8028304,"A":16752309},"shiny":{"K":3810322,"B":16106818,"T":14714938,"L":16773334,"S":14257215,"A":16765148},"eyes":[[4,6],[10,6]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,9],"cheeks":[[2,9],[13,9]]},{"id":"robot","name":"Robot","rarity":"uncommon","art":[".......AA.......",".......KK.......","...KKKKKKKKKK...","...KLLLLLLLLK...","...KLDDDDDDBK...","..KKLDDDDDDBKK..","..KKLDDDDDDBKK..","...KLDDDDDDBK...","...KBBBBBBBBK...","...KSSSSSSSSK...","....KKKKKKKK....","..KKBBBBBBBBKK..",".KBKBBAABBBBKBK.",".KBKBBBBBBBSKBK.","..K.KBBBBBSK.K..","....KKK..KKK...."],"palette":{"K":2304570,"B":11122892,"L":14805493,"S":8030883,"D":1056812,"A":16731501},"shiny":{"K":3811856,"B":15254106,"L":16773567,"S":12093994,"D":2757640,"A":5111736},"eyes":[[6,5],[9,5]],"eyeSize":[1,2],"eyeColor":6091519,"mouth":[6,7],"cheeks":[]},{"id":"cactus","name":"Cactus","rarity":"uncommon","art":["................","......KKKK......","....KKLLBBKK....","...KLLBBBBBBK...","...KLBBBBBBBK...",".K.KLBBBBBBBK.K.","KBKKBBBBBBBBKKBK","KBBKBBBBBBBBKBBK",".KBBBBBBBBBBBBK.","..KKBBBBBBBSKK..","...KBBBBBBBSK...",".KPPPPPPPPPPPPK.",".KQQQQQQQQQQQQK.","..KPPPPPPPPPPK..","..KPPPPPPPPPQK..","...KKKKKKKKKK..."],"palette":{"K":1919532,"B":5221980,"L":10215567,"S":3112257,"P":14251082,"Q":11030575},"shiny":{"K":2306122,"B":7317759,"L":12901631,"S":4026308,"P":15921906,"Q":12105928},"eyes":[[5,5],[9,5]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,8],"cheeks":[[4,7],[11,7]]},{"id":"capybara","name":"Capybara","rarity":"uncommon","art":["........GG......","......KKKK......",".....KYOOOK.....","..KK.KOOODK.KK..","..KSKKKKKKKKSK..",".KLLLBBBBBBBBBK.",".KLBBBBBBBBBBBK.","KLBBBBBBBBBBBBBK","KBBBBBBBBBBBBBSK","KBBBBBMMMMBBBBSK","KBBBBMNNNNMBBBSK","KBBBMMMMMMMMBBSK","KBBBMMMMMMMMBBSK",".KSBBMMMMMMBBSK.","..KSSBBBBBBSSK..","...KKKKKKKKKK..."],"palette":{"K":4860439,"B":12879439,"L":14921082,"S":10183226,"M":10118205,"N":3875350,"Y":16765803,"O":16754224,"D":14710826,"G":7323466},"shiny":{"K":7033400,"B":15852232,"L":16774886,"S":13811096,"M":13212266,"N":5913134,"Y":16766684,"O":16752562,"D":15234447,"G":7323466},"eyes":[[3,7],[11,7]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,11],"cheeks":[[2,9],[12,9]]},{"id":"penguin","name":"Penguin","rarity":"uncommon","art":["................","................",".....KKKKKK.....","...KKLLBBBBKK...","..KLLBBBBBBBBK..","..KLBWWBBWWBBK..",".KBBWWWBBWWWBBK.",".KBBWWWWWWWWBBK.",".KBBWWWAAWWWBSK.",".KBBWWWWWWWWBSK.","KBKBWWWWWWWWBKBK","KBKBWWWWWWWWBKSK",".KKBWWWWWWWGBKK.","..KBGWWWWWWGSK..","..KAAAKKKKAAAK..","..KKKK....KKKK.."],"palette":{"K":1316902,"B":3094096,"L":5660799,"S":2238521,"W":16054011,"G":13226467,"A":16756782},"shiny":{"K":1847132,"B":5210057,"L":9418224,"S":3629214,"W":16054527,"G":12571632,"A":16763210},"eyes":[[5,6],[9,6]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":null,"cheeks":[[4,8],[10,8]]},{"id":"mushroom","name":"Mushroom","rarity":"uncommon","art":["................","................","....KKKKKKKK....","..KKRRWWRRRRKK..",".KRRRWWRRRWWRRK.","KRWWRRRRRRWWRRRK","KRWWRRRRRRRRRRRK","KKKKKKKKKKKKKKKK","..KBBBBBBBBBBK..","..KLBBBBBBBBBK..","..KLBBBBBBBBBK..","..KBBBBBBBBBSK..","..KBBBBBBBBBSK..","...KBBBBBBBSK...","...KSSBBBBSSK...","....KKKKKKKK...."],"palette":{"K":4856346,"R":14240314,"W":16774374,"B":16115404,"L":16775920,"S":14073756},"shiny":{"K":5913104,"R":16106818,"W":16775392,"B":16773334,"L":16775920,"S":14731424},"eyes":[[5,9],[9,9]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,12],"cheeks":[[3,10],[12,10]]},{"id":"owl","name":"Owl","rarity":"rare","art":["................","..KK........KK..","..KBK......KBK..","..KBBKKKKKKBBK..",".KBBBBBBBBBBBBK.",".KWWWWBBBBWWWWK.",".KWWWWBBBBWWWWK.",".KWWWWBAABWWWWK.",".KWWWWBAABWWWWK.",".KSBBBBBBBBBBSK.",".KSBLLLLLLLLBSK.",".KSLLBLLBLLBLSK.","..KSLLLLLLLLSK..","..KSSLBLLBLSSK..","...KSSSSSSSSK...","....AA....AA...."],"palette":{"K":3810840,"B":10120005,"L":15785144,"S":7227950,"W":16773577,"A":16754224},"shiny":{"K":2763320,"B":15265013,"L":16777215,"S":11844815,"W":13234431,"A":16767050},"eyes":[[3,6],[11,6]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":null,"cheeks":[]},{"id":"axolotl","name":"Axolotl","rarity":"rare","art":["................","................","................","A.A..KKKKKK..A.A",".AA.KLLBBBBK.AA.","AAAKLBBBBBBBKAAA","..AKBBBBBBBBKA..",".AAKBBBBBBBBKAA.","A..KBBBBBBBBK..A","...KBBBBBBBBK...","...KSBBBBBBSK...","....KKBBBBKK....","...KBBLLLLBBK...","..KBKBLLLLBKBK..","..KKKSSSSSSKKK..",".....KKKKKK....."],"palette":{"K":9057616,"B":16757703,"L":16769258,"S":15239845,"A":16735631},"shiny":{"K":8014352,"B":16765562,"L":16773316,"S":14722112,"A":16747069},"eyes":[[5,6],[9,6]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,9],"cheeks":[[4,8],[11,8]]},{"id":"turtle","name":"Turtle","rarity":"rare","art":["................","................","...KKKKK........","..KQQHHHKK......",".KQHPPPPHHK.....",".KQPHHHHPHKKKK..","KHHPHHHHPKWWBWW.","KHHPHHHHKLBBBBBK","KHPPPPPPKBBBBBBK","KHHHHHHHKBBBBBBK","KQQQQQQQKBBBBBSK",".KKKKKKKKKBBBSK.",".K.KBBK...KKKK..","...KBBK.KBBK....","...KKKK.KBBK....","........KKKK...."],"palette":{"K":2372383,"B":8176762,"L":11921056,"S":5216858,"H":10119738,"Q":13210959,"P":6176546,"W":16052710},"shiny":{"K":2046515,"B":6277552,"L":11071708,"S":3840646,"H":15251504,"Q":16769658,"P":11039770,"W":16777215},"eyes":[[10,7],[13,7]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[10,10],"cheeks":[[9,9],[13,9]]},{"id":"octopus","name":"Octopus","rarity":"rare","art":["................",".....KKKKKK.....","...KKLLBBBBKK...","..KLLBBBBBBBBK..","..KLBBBBBBBBBK..",".KLBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBSK.","..KBBBBBBBBBSK..","..KBBBBBBBBBBK..",".KBBKBBBBBBKBBK.","KBSKBBKBBKBBKSBK","KBKKBSKBBKSBKKBK",".K.KBKKBBKKBK.K.","...KK..KK..KK..."],"palette":{"K":7020330,"B":16743019,"L":16757672,"S":14242634},"shiny":{"K":1331274,"B":5232328,"L":11993076,"S":3122070},"eyes":[[5,6],[9,6]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,9],"cheeks":[[3,8],[12,8]]},{"id":"ghost","name":"Ghost","rarity":"epic","art":["................","................",".....KKKKKK.....","...KKLLLLBBKK...","..KLLBBBBBBBBK..","..KLBBBBBBBBBK..",".KLBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBBK.",".KBBBBBBBBBBBSK.",".KBBBBBBBBBBBSK.",".KBBBBBBBBBBSSK.",".KBSBBBSBBBSSSK.",".KBK.KBBK.KBBK..","..K...KK...KK..."],"palette":{"K":5991308,"B":15660031,"L":16777215,"S":12240608},"shiny":{"K":3107658,"B":13172697,"L":15794164,"S":9429162},"eyes":[[5,7],[9,7]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,10],"cheeks":[[3,9],[12,9]]},{"id":"goose","name":"Goose","rarity":"epic","art":["................",".....KKKKKK.....","....KLLHHHHK....","...KLHKHHKHHK...","...KHHHHHHHHK...","...KHHHHHHHHK...","...KHHAAAAHTK...","....KHAAAATK....",".....KHHHTK.....",".....KHHHTK.....","...KKHHHHHTKK...","..KBBBBBBBBBSK..",".KBBBBBBBBBBSSK.",".KSBBBBBBBBBSSK.","..KSSSSSSSSSSK..","....KAAK.KAAK..."],"palette":{"K":5922670,"H":16184558,"L":16777215,"T":13881544,"B":16184558,"S":13881544,"A":16747050},"shiny":{"K":2831174,"H":16316924,"L":16777215,"T":13817827,"B":7307166,"S":5201274,"A":16748410},"eyes":[[5,4],[9,4]],"eyeSize":[2,2],"eyeColor":1774628,"mouth":[6,6],"cheeks":[]},{"id":"dragon","name":"Dragon","rarity":"legendary","art":["................","..H..........H..","..HH.KKKKKK.HH..","...HKLLBBBBKH...","...KLBBBBBBBK...","KM.KBBBBBBBBK.MK","KMMKBBBBBBBBKMMK","KMMKBBBBBBBBKMMK",".KMKBBBBBBBBKMK.","..KKBBBBBBBBKK..","...KSBBBBBBSK...","...KKBYYYYBKK...","..KBKBYYYYBKBK..","...KBBYYYYBBKBK.","...KBBBBBBBBKK..","....KKK..KKK...."],"palette":{"K":4853776,"B":14698558,"L":16748403,"S":11021870,"M":16752451,"H":16773320,"Y":16765562},"shiny":{"K":789782,"B":3817304,"L":7041940,"S":2303546,"M":16765514,"H":16774870,"Y":16765514},"eyes":[[5,6],[9,6]],"eyeSize":[2,2],"eyeColor":1774628,"shinyEyeColor":16726843,"mouth":[6,9],"cheeks":[[4,8],[11,8]]}];
+  const RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+  const WEIGHT = { common: 50, uncommon: 28, rare: 14, epic: 6.5, legendary: 1.5 };
+  const COLOR = { common: 0xb8c2cc, uncommon: 0x6fdc8c, rare: 0x5aa9ff, epic: 0xc77dff, legendary: 0xffc53d };
+  const STARS = { common: '★', uncommon: '★★', rare: '★★★', epic: '★★★★', legendary: '★★★★★' };
+  const GROUP = { common: 'Plain', uncommon: 'Mossy', rare: 'Glowing', epic: 'Gilded', legendary: 'Gilded' };
+  const PATTERN_NAMES = ['Speckled', 'Striped', 'Zigzag', 'Spotted', 'Dipped', 'Dotted', 'Marbled', 'Dappled', 'Diagonal', 'Crowned', 'Dusted'];
+  /** The five natural patterns in use. */
+  const LOOKS = [0, 3, 7, 6, 10];
+  const CANDIDATES = [
+    { id: 6, text: 'Thin wavy veins of the mark colour, like stone.' },
+    { id: 7, text: 'Soft blotches a shade off the shell.' },
+    { id: 8, text: 'Slanted pinstripes, spaced wide.' },
+    { id: 9, text: 'Speckles crowded at the top, thinning out below.' },
+  ];
+  const PALETTES = [
+    { name: 'Cream',    W: 0xfaf3e3, S: 0xd9c9a8, L: 0xffffff, K: 0x5d4a3a, M: 0xb08a5e },
+    { name: 'Rose',     W: 0xf7e1e6, S: 0xdfb6c0, L: 0xfff4f6, K: 0x5e3c46, M: 0xc9788c },
+    { name: 'Sand',     W: 0xefe2c4, S: 0xd2bf95, L: 0xfbf4e2, K: 0x5a4a2c, M: 0xa88a4e },
+    { name: 'Fog',      W: 0xe4e6ea, S: 0xbcc1ca, L: 0xf6f7f9, K: 0x3e434c, M: 0x7d8594 },
+    { name: 'Peach',    W: 0xfde8dc, S: 0xe9bfa8, L: 0xfff6f0, K: 0x64463a, M: 0xd98466 },
+    { name: 'Charcoal', W: 0x4f4b56, S: 0x3a3740, L: 0x77727f, K: 0x1d1b22, M: 0x9a94a4 },
+  ];
+  const MOSS = 0x6fdc8c, MOSS_DARK = 0x3f9e5c, LEAF = 0xa8f0bd;
+  const GLOW = 0x5aa9ff, GLOW_HOT = 0xd6ebff;
+  const GOLD = 0xffc53d, GOLD_SHADE = 0xc98f1a;
+  /** How far the cap's outline leans toward gold's hue and saturation; its lightness never moves. */
+  const RIM_LEAN = 0.65;
+  const toHsl = c => {
+    const r = ((c >> 16) & 255) / 255, g = ((c >> 8) & 255) / 255, b = (c & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    if (d === 0) return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+  };
+  const fromHsl = ([h, s, l]) => {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    const ch = v => Math.round((v + m) * 255);
+    return (ch(r) << 16) | (ch(g) << 8) | ch(b);
+  };
+  const GOLD_HSL = toHsl(GOLD);
+  /** Blends toward gold, then puts the colour's own lightness back, so it never passes through other hues. */
+  const leanToGold = (c, k) => {
+    const [h, s] = toHsl(mix(c, GOLD, k));
+    return fromHsl([h, s, toHsl(c)[2]]);
+  };
+  const GLINT = 0xfff6bd, WHITE = 0xffffff, FLARE_AIR = 0xc8c29a;
+
+  const mix = (a, b, k) => {
+    k = Math.max(0, Math.min(1, k));
+    const ch = s => Math.round(((a >> s) & 255) * (1 - k) + ((b >> s) & 255) * k);
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+  };
+  const rng = seed => { let a = (Math.floor(seed) * 2654435761) >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  const hash = n => rng(n * 7919 + 13)();
+  const pick = (r, list) => list[Math.floor(r() * list.length)];
+
+  // Names: the start of one name joined to the end of another.
+  const NAMES = 'Mochi Pixel Byte Nibble Biscuit Pip Sprocket Tofu Noodle Waffles Bean Kiwi Miso Pickle Gizmo Dumpling Boba Chip Cookie Fig Juniper Lumen Nova Orbit Pebble Quill Rune Tango Echo Ziggy Null Sudo Lambda Kernel Cache Async Regex Grep Bit Loop Hex Tux Ping Pong Turbo Wasabi Yuzu Mango Olive Clover'.split(' ');
+  const head = w => (w.toLowerCase().match(/^[^aeiouy]*[aeiouy]+/) || [w.toLowerCase()])[0];
+  const tail = w => (w.toLowerCase().match(/[^aeiouy]*[aeiouy]+[^aeiouy]*$/) || [w.toLowerCase()])[0];
+  const blend = (a, b) => {
+    const h = head(a); let t = tail(b);
+    if (/[aeiouy]$/.test(h) && /^[aeiouy]/.test(t)) t = t.replace(/^[aeiouy]+/, '') || t;
+    const s = h + t; return s[0].toUpperCase() + s.slice(1);
+  };
+
+  const rollRarity = x => { x *= 100; for (const r of RARITIES) { x -= WEIGHT[r]; if (x < 0) return r; } return 'common'; };
+
+  /** One egg from its seed: rarity, look, and the seeded details. */
+  const makeEgg = (seed, forced) => {
+    const r = rng(seed);
+    const rarity = forced?.rarity ?? rollRarity(r());
+    const pattern = forced?.pattern ?? LOOKS[Math.floor(r() * LOOKS.length)];
+    const palette = forced?.palette ?? Math.floor(r() * 6);
+    const off = Math.floor(r() * 4);
+    const ph = r() * 6.28;
+    const marks = new Map();
+    const mark = (x, y, v = 'm') => { if (inside(x, y) && at(x, y) !== 'L') marks.set(y * 16 + x, v); };
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      if (!inside(x, y) || at(x, y) === 'L') continue;
+      if (pattern === 0 && r() < 0.14) mark(x, y);
+      if (pattern === 1 && (y === 6 || y === 9 || y === 12)) mark(x, y);
+      if (pattern === 2 && y === 7 + [0, 1, 2, 1][(x + off) % 4]) mark(x, y);
+      if (pattern === 4 && y >= 10 + [0, 0, 1, 1][(x + off) % 4]) mark(x, y);
+      if (pattern === 5 && (y === 7 || y === 11) && (x + off) % 2 === 0) mark(x, y);
+      if (pattern === 6 && Math.sin(x * 0.8 + Math.sin(y * 0.75 + ph) * 2.2 + ph) > 0.82) mark(x, y);
+      if (pattern === 8 && y >= 5 && y <= 13 && (x + y + off) % 4 === 0) mark(x, y);
+      if (pattern === 9 && r() < (y <= 7 ? 0.4 : 0.03)) mark(x, y);
+      if (pattern === 10 && r() < 0.03 + 0.4 * Math.pow(Math.max(0, y - 6) / 8, 1.6)) mark(x, y);
+    }
+    if (pattern === 3) {
+      for (let i = 0; i < 4; i++) {
+        const cx = 4 + Math.floor(r() * 8), cy = 5 + Math.floor(r() * 8);
+        for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]) mark(cx + dx, cy + dy);
+      }
+    }
+    if (pattern === 7) {
+      for (let i = 0; i < 4; i++) {
+        const cx = 3 + Math.floor(r() * 9), cy = 5 + Math.floor(r() * 8);
+        for (const [dx, dy] of [[0,0],[1,0],[0,1],[1,1]]) mark(cx + dx, cy + dy, 't');
+        mark(cx + (r() < 0.5 ? -1 : 2), cy + Math.floor(r() * 2), 't');
+      }
+    }
+    const veins = [];
+    for (let v = 0; v < 4; v++) {
+      let x = 4 + Math.floor(r() * 8), y = 4 + v * 2;
+      for (let s = 0; s < 7 - v; s++) {
+        if (inside(x, y)) veins.push([x, y, s]);
+        if (s === 2 && inside(x + 1, y)) veins.push([x + 1, y, s]);
+        y++; x += Math.floor(r() * 3) - 1;
+      }
+    }
+    const flecks = [];
+    while (flecks.length < 7) { const x = 3 + Math.floor(r() * 10), y = 6 + Math.floor(r() * 8); if (inside(x, y) && at(x, y) !== 'L') flecks.push([x, y]); }
+    const phase = r() * 6.28;
+    return { seed, rarity, group: GROUP[rarity], pattern, palette, marks, veins, flecks, phase, clockOffset: Math.floor(r() * 4500) };
+  };
+  const lookName = egg => `${PATTERN_NAMES[egg.pattern]} · ${PALETTES[egg.palette].name}`;
+
+  /** The egg's pixels at time t (ms). */
+  const paint = (egg, t, o) => {
+    const P = PALETTES[egg.palette];
+    const buf = new Array(256).fill(null);
+    const markShade = mix(P.M, P.K, 0.3), tint = mix(P.W, P.M, 0.4), tintShade = mix(P.S, P.M, 0.4);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const c = at(x, y), k = y * 16 + x;
+      if (c === '.') continue;
+      const m = egg.marks.get(k);
+      buf[k] = c === 'K' ? P.K : c === 'L' ? P.L
+        : c === 'S' ? (m === 'm' ? markShade : m === 't' ? tintShade : P.S)
+        : (m === 'm' ? P.M : m === 't' ? tint : P.W);
+    }
+    if (o.marks) {
+      if (egg.group === 'Mossy') {
+        for (let x = 3; x < 13; x++) {
+          const y = 12 + Math.round(Math.sin(x * 0.9 + egg.phase) * 0.8);
+          if (inside(x, y)) buf[y * 16 + x] = MOSS;
+          if (inside(x, y + 1)) buf[(y + 1) * 16 + x] = MOSS_DARK;
+          if ((x + Math.round(egg.phase)) % 4 === 0 && inside(x, y - 1)) buf[(y - 1) * 16 + x] = LEAF;
+        }
+      }
+      if (egg.group === 'Glowing') {
+        const pulse = o.still ? 0.6 : (Math.sin(t / 650 + egg.phase) + 1) / 2;
+        for (const [x, y, s] of egg.veins) {
+          const k = y * 16 + x;
+          const wave = o.still ? 0 : (Math.sin(t / 260 - s * 0.9) + 1) / 2;
+          buf[k] = mix(mix(buf[k], GLOW, 0.55 + pulse * 0.45), GLOW_HOT, wave * pulse * 0.7);
+        }
+      }
+      if (egg.group === 'Gilded') {
+        for (let y = 2; y <= 5; y++) for (let x = 0; x < 16; x++) {
+          if (!inside(x, y)) continue;
+          buf[y * 16 + x] = at(x, y) === 'L' ? 0xfff0b8 : (y === 5 && (x + egg.flecks[0][0]) % 2 === 0) ? GOLD_SHADE : GOLD;
+        }
+        for (const [x, y] of egg.flecks) buf[y * 16 + x] = GOLD;
+        // The outline round the cap leans toward gold in hue and saturation, keeping its own lightness,
+        // and fades back to the shell's outline below it.
+        for (const [x, y] of RIM) {
+          const k = y <= 4 ? 1 : y === 5 ? 0.65 : y === 6 ? 0.3 : 0;
+          if (k) buf[y * 16 + x] = leanToGold(P.K, k * RIM_LEAN);
+        }
+      }
+    }
+    if (egg.isShiny && o.shine && !o.still) shine(buf, egg, t + egg.clockOffset, o.shine === 'strong');
+    return buf;
+  };
+
+  /** Today's pixling shine, worked on an egg; `strong` speeds it up and brightens it. */
+  const shine = (buf, egg, clock, strong, RIM = EGG_RIM) => {
+    const BEAT = strong ? 1500 : 4500, CHANCE = strong ? 0.45 : 0.15, LIFT = strong ? 0.38 : 0.1, GLINT_MS = 480, SHEEN_MS = strong ? 650 : 500;
+    const beat = Math.floor(clock / BEAT), local = clock - beat * BEAT;
+    const flare = strong ? 1 + Math.floor(hash(beat * 29 + 3) * 2) : Math.floor(hash(beat * 29 + 3) * 3);
+    const peakAt = g => 1 - Math.abs((g / GLINT_MS) * 2 - 1);
+    const glintAt = ([x, y], peak) => {
+      const k = y * 16 + x;
+      if (buf[k] !== null) buf[k] = mix(buf[k], GLINT, Math.min(1, peak * 1.6));
+      if (flare < 1 || peak <= 0.45) return;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy, nk = ny * 16 + nx;
+        if (nx < 0 || ny < 0 || nx > 15 || ny > 15) continue;
+        if (buf[nk] !== null) buf[nk] = mix(buf[nk], WHITE, 0.45 * peak);
+        else if (flare >= 2 && peak > 0.75) buf[nk] = FLARE_AIR;
+      }
+    };
+    if (hash(beat * 11 + 5) >= CHANCE) {
+      if (local >= GLINT_MS) return;
+      const ranked = RIM.map((pt, i) => ({ pt, score: hash(beat * 31 + i) * 0.3 + (1 - (pt[0] / 16 + pt[1] / 16) / 2) * 0.7 })).sort((a, b) => b.score - a.score);
+      glintAt(ranked[Math.floor(hash(beat * 5 + 9) * 4)].pt, peakAt(local));
+      return;
+    }
+    if (local >= SHEEN_MS + GLINT_MS) return;
+    const tilt = 0.5 + hash(beat * 7 + 1) * 1.25;
+    const uMin = 2 + 2 * tilt, uMax = 13 + 15 * tilt;
+    const pos = uMin - 2 + (uMax - uMin + 4) * Math.min(1, local / SHEEN_MS);
+    if (local < SHEEN_MS) {
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const k = y * 16 + x; if (buf[k] === null) continue;
+        const d = Math.abs(x + y * tilt - pos);
+        if (d < 1.5) buf[k] = mix(buf[k], WHITE, LIFT * (1 - d / 1.5) * (strong ? 1 : 1.5));
+      }
+    }
+    const fireAt = SHEEN_MS * (0.2 + hash(beat * 3 + 2) * 0.6);
+    if (local >= fireAt && local < fireAt + GLINT_MS) {
+      const u = uMin - 2 + (uMax - uMin + 4) * fireAt / SHEEN_MS;
+      const edge = RIM.reduce((b, p) => Math.abs(p[0] + p[1] * tilt - u) < Math.abs(b[0] + b[1] * tilt - u) || (Math.abs(p[0] + p[1] * tilt - u) === Math.abs(b[0] + b[1] * tilt - u) && p[1] < b[1]) ? p : b, RIM[0]);
+      glintAt(edge, peakAt(local - fireAt));
+    }
+  };
+
+  /** The hatch: wobble, cracks, light leaking in the true rarity's colour, a flash, then the empty shell. */
+  const paintHatch = (egg, t, o) => {
+    const light = COLOR[egg.rarity];
+    if (t >= 4300) {
+      const buf = new Array(256).fill(null);
+      const P = PALETTES[egg.palette];
+      for (let y = 9; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const c = at(x, y); if (c === '.') continue;
+        const top = 10 + ((x % 2) ? 0 : 1);
+        if (y < top) continue;
+        buf[y * 16 + x] = y === top || c === 'K' ? P.K : c === 'S' ? P.S : P.W;
+      }
+      const fade = Math.max(0, 1 - (t - 4300) / 1600);
+      if (fade > 0) for (let i = 0; i < 9; i++) {
+        const a = i / 9 * 6.28, rr = 3 + (t - 4300) / 220;
+        const x = Math.round(7.5 + Math.cos(a) * rr), y = Math.round(8 + Math.sin(a) * rr * 0.8);
+        if (x >= 0 && x < 16 && y >= 0 && y < 16 && buf[y * 16 + x] === null) buf[y * 16 + x] = mix(light, WHITE, 1 - fade);
+      }
+      return buf;
+    }
+    if (t >= 4000) {
+      const buf = new Array(256).fill(null);
+      const fade = (t - 4000) / 300, color = fade < 0.5 ? WHITE : light, r = 3 + fade * 14;
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (Math.hypot((x - 7.5) * 0.8, (y - 9) * 1.2) < r) buf[y * 16 + x] = color;
+      return buf;
+    }
+    const base = paint(egg, t, { ...o, shine: null });
+    const urgency = t < 1500 ? 400 : t < 3000 ? 240 : 110;
+    const dx = o.still ? 0 : (t % urgency < urgency * 0.35 ? (Math.floor(t / 60) % 2 === 0 ? -1 : 1) : 0);
+    const P = PALETTES[egg.palette];
+    const stages = t < 1500 ? 0 : t < 2500 ? 1 : t < 3300 ? 2 : 3;
+    for (let i = 0; i < stages; i++) for (const [x, y] of CRACKS[i]) base[y * 16 + x] = P.K;
+    if (t > 3300 && Math.floor(t / 80) % 2 === 0) for (const [x, y] of CRACKS.flat()) if (base[(y - 1) * 16 + x] !== null) base[(y - 1) * 16 + x] = light;
+    const buf = new Array(256).fill(null);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const sx = x - dx; if (sx >= 0 && sx < 16) buf[y * 16 + x] = base[y * 16 + sx]; }
+    return buf;
+  };
+
+  const blit = (canvas, buf) => {
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(16, 16);
+    for (let i = 0; i < 256; i++) {
+      const c = buf[i];
+      if (c === null) { img.data[i * 4 + 3] = 0; continue; }
+      img.data[i * 4] = (c >> 16) & 255; img.data[i * 4 + 1] = (c >> 8) & 255; img.data[i * 4 + 2] = c & 255; img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  };
+
+  // State
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+  const state = { seed: 2026, pair: [], chosen: null, hatchStart: 0, shinyLaid: true, marks: true, shine: 'strong' };
+
+  const PARENT_END = 'Waffles';
+  /** Two eggs, and a third, shiny, when one was laid. */
+  const makePair = seed => {
+    const eggs = [makeEgg(seed * 3 + 1), makeEgg(seed * 3 + 2)];
+    if (state.shinyLaid) { const s = makeEgg(seed * 3 + 3); s.isShiny = true; eggs.push(s); }
+    const nr = rng(seed * 31 + 7);
+    const pool = NAMES.filter(n => n !== 'Miso' && n !== PARENT_END);
+    const taken = new Set();
+    for (const e of eggs) {
+      do { e.start = pick(nr, pool); } while (taken.has(e.start));
+      taken.add(e.start);
+      e.name = blend(e.start, PARENT_END);
+    }
+    return eggs;
+  };
+
+  const caption = (egg, i) => {
+    const cap = $('egg' + i).querySelector('.cap');
+    cap.innerHTML = '';
+    $('egg' + i).setAttribute('aria-label', `Hatch the ${lookName(egg).replace(' · ', ' ').toLowerCase()} egg${egg.isShiny ? ', shining' : ''}`);
+  };
+
+  const reset = () => {
+    state.pair = makePair(state.seed);
+    state.chosen = null;
+    [0, 1, 2].forEach(i => {
+      const b = $('egg' + i), egg = state.pair[i];
+      b.hidden = !egg; b.disabled = false; b.classList.remove('faded');
+      if (egg) caption(egg, i);
+    });
+    $('reveal').innerHTML = '';
+  };
+
+  const hatch = i => {
+    if (state.chosen !== null) return;
+    state.chosen = i; state.hatchStart = performance.now();
+    state.pair.forEach((_, j) => { const b = $('egg' + j); b.disabled = true; if (j !== i) b.classList.add('faded'); });
+    $('reveal').textContent = 'Hatching…';
+    const egg = state.pair[i];
+    setTimeout(() => {
+      const surprise = egg.rarity === 'legendary' ? ' It was never epic.' : '';
+      $('reveal').innerHTML = `${STARS[egg.rarity]} ${egg.rarity.toUpperCase()}: ${egg.name} hatched!${egg.isShiny ? ' ✦' : ''}<small>${egg.start} + ${PARENT_END}, child of Miffles.${surprise} Pick “New pair” to roll again.</small>`;
+    }, 4300);
+  };
+
+  $('egg0').addEventListener('click', () => hatch(0));
+  $('egg1').addEventListener('click', () => hatch(1));
+  $('egg2').addEventListener('click', () => hatch(2));
+  $('reroll').addEventListener('click', () => { state.seed = Math.floor(Math.random() * 1e6); $('seed').value = state.seed; reset(); });
+  $('seed').addEventListener('change', e => { state.seed = Math.max(0, Math.floor(+e.target.value || 0)); reset(); });
+  $('shiny').addEventListener('change', e => { state.shinyLaid = e.target.checked; reset(); });
+
+  // Groups legend
+  const groupInfo = [
+    { rarity: 'common', odds: '50%', text: 'No mark. The seed look alone.' },
+    { rarity: 'uncommon', odds: '28%', text: 'A green vine with leaves round the base.' },
+    { rarity: 'rare', odds: '14%', text: 'Branching blue veins that pulse with light.' },
+    { rarity: 'epic', odds: '8%', text: 'A gold cap and a scatter of flecks. 1 in 5 of these is legendary.' },
+  ];
+  const groupEggs = groupInfo.map((g, i) => {
+    const egg = makeEgg(900 + i, { rarity: g.rarity, pattern: [0, 3, 10, 7][i], palette: [0, 2, 3, 1][i] });
+    const el = document.createElement('div'); el.className = 'group';
+    el.innerHTML = `<canvas width="16" height="16" aria-hidden="true"></canvas><div><b>${GROUP[g.rarity]}</b><span class="odds">${g.odds} per egg</span><p>${g.text}</p></div>`;
+    $('groups').appendChild(el);
+    return { egg, canvas: el.querySelector('canvas') };
+  });
+
+  // Every look table
+  const table = $('looks');
+  table.innerHTML = `<thead><tr><th scope="col"><span hidden>Group</span></th>${LOOKS.map(p => `<th scope="col">${PATTERN_NAMES[p]}</th>`).join('')}</tr></thead>`;
+  const tbody = document.createElement('tbody'); table.appendChild(tbody);
+  const lookEggs = [];
+  groupInfo.forEach((g, row) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<th scope="row"><button type="button" class="rowbtn" aria-label="Change the ${GROUP[g.rarity]} row's shell colours">${GROUP[g.rarity]} <span aria-hidden="true">↻</span></button></th>`;
+    tr.className = 'cycle';
+    tr.addEventListener('click', () => {
+      const row = lookEggs.filter(l => l.row === tr);
+      row.forEach(l => {
+        l.egg.palette = (l.egg.palette + 1) % PALETTES.length;
+        l.canvas.setAttribute('aria-label', `${l.egg.group}, ${lookName(l.egg).replace(' · ', ', ').toLowerCase()}`);
+      });
+    });
+    LOOKS.forEach((p, col) => {
+      const egg = makeEgg(5000 + row * 10 + col, { rarity: g.rarity, pattern: p, palette: (col + row * 2) % 6 });
+      const td = document.createElement('td');
+      td.innerHTML = `<canvas width="16" height="16" role="img" aria-label="${GROUP[g.rarity]}, ${PATTERN_NAMES[p].toLowerCase()}, ${PALETTES[egg.palette].name.toLowerCase()}"></canvas>`;
+      tr.appendChild(td);
+      lookEggs.push({ egg, canvas: td.querySelector('canvas'), row: tr });
+    });
+    tbody.appendChild(tr);
+  });
+
+
+  // Pixlings: the body, open eyes with a catchlight, a smile and cheeks, as canvas.ts draws them at rest.
+  const CHEEK = 0xff8fab, DARK_EYE = 0x1b1424;
+  const speciesFor = egg => {
+    const pool = SPECIES_DATA.filter(s => s.rarity === egg.rarity);
+    return pool[Math.floor(rng(egg.seed + 99)() * pool.length)] || SPECIES_DATA[0];
+  };
+  /** A mate named by the new half of a name: its species rolled from the name by the usual weights. */
+  const mateFor = name => {
+    const r = rng([...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
+    const rarity = rollRarity(r());
+    const pool = SPECIES_DATA.filter(s => s.rarity === rarity);
+    return pool[Math.floor(r() * pool.length)] || SPECIES_DATA[0];
+  };
+  const rims = new Map();
+  const rimOf = s => {
+    if (rims.has(s.id)) return rims.get(s.id);
+    const isIn = (x, y) => { const ch = (s.art[y] || '')[x]; return ch !== undefined && ch !== '.' && s.palette[ch] !== undefined; };
+    const rim = [];
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (isIn(x, y) && (!isIn(x + 1, y) || !isIn(x - 1, y) || !isIn(x, y + 1) || !isIn(x, y - 1))) rim.push([x, y]);
+    rims.set(s.id, rim); return rim;
+  };
+  const paintPixling = (s, isShiny, t, offset) => {
+    const pal = isShiny ? s.shiny : s.palette;
+    const buf = new Array(256).fill(null);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const c = pal[(s.art[y] || '')[x]]; if (c !== undefined) buf[y * 16 + x] = c; }
+    const ink = isShiny && s.shinyEyeColor !== undefined ? s.shinyEyeColor : s.eyeColor;
+    const [w, h] = s.eyeSize;
+    const blink = !still && ((t + offset) % 3600) < 130;
+    const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < 16 && y < 16) buf[y * 16 + x] = c; };
+    for (const [ex, ey] of s.eyes) {
+      if (blink) { for (let dx = 0; dx < w; dx++) put(ex + dx, ey + h - 1, ink); continue; }
+      for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) put(ex + dx, ey + dy, ink);
+      if (s.eyeColor === DARK_EYE && w >= 2) put(ex, ey, WHITE);
+    }
+    if (s.mouth) for (const [dx, dy] of [[0, 0], [3, 0], [1, 1], [2, 1]]) put(s.mouth[0] + dx, s.mouth[1] + dy, s.eyeColor);
+    for (const [cx, cy] of s.cheeks) { put(cx, cy, CHEEK); put(cx + 1, cy, CHEEK); }
+    if (isShiny && !still) shine(buf, null, t + offset, true, rimOf(s));
+    return buf;
+  };
+
+  // Family line: pick through generations without hatching.
+  const line = { gens: [], seed: 41, shinyNext: false };
+  let familyCanvases = [];
+  const nextSeed = (s, k) => (s * 7 + k * 131 + 17) % 2147483647;
+  const usedNames = upTo => {
+    const used = new Set();
+    for (let i = 0; i <= upTo; i++) { const g = line.gens[i]; const c = g.eggs[g.chosen ?? -1]; if (c) { used.add(c.start); used.add(c.end); } }
+    return used;
+  };
+  /** The nest after a parent: two eggs, and a shiny third when one was laid. */
+  const nestAfter = (parent, genIndex, withShiny) => {
+    const eggs = [0, 1, ...(withShiny ? [2] : [])].map(k => makeEgg(nextSeed(parent.seed, k)));
+    if (withShiny) eggs[2].isShiny = true;
+    const used = usedNames(genIndex);
+    const nr = rng(nextSeed(parent.seed, 9));
+    const pool = NAMES.filter(n => !used.has(n));
+    const taken = new Set();
+    for (const e of eggs) {
+      let fresh; do { fresh = pick(nr, pool.length ? pool : NAMES); } while (taken.has(fresh) && pool.length > eggs.length);
+      taken.add(fresh);
+      const carried = parent.newer, side = parent.newerSide;
+      e.start = side === 'start' ? carried : fresh;
+      e.end = side === 'start' ? fresh : carried;
+      e.name = blend(e.start, e.end);
+      e.newer = fresh; e.newerSide = side === 'start' ? 'end' : 'start';
+    }
+    return eggs;
+  };
+  const newLine = seed => {
+    line.seed = seed;
+    const root = makeEgg(seed);
+    root.start = root.end = root.name = root.newer = pick(rng(seed + 5), NAMES);
+    root.newerSide = 'start';
+    line.gens = [{ eggs: [root], chosen: 0 }];
+    line.gens.push({ eggs: nestAfter(root, 0, false), chosen: null });
+    drawTree();
+  };
+  const choose = (gi, ei) => {
+    line.gens = line.gens.slice(0, gi + 1);
+    line.gens[gi].chosen = ei;
+    line.gens.push({ eggs: nestAfter(line.gens[gi].eggs[ei], gi, line.shinyNext), chosen: null });
+    line.shinyNext = false; $('line-shiny').checked = false;
+    drawTree();
+    const last = $('tree').lastElementChild?.querySelector('.pick');
+    if (last) last.focus({ preventScroll: true });
+  };
+  const drawTree = () => {
+    familyCanvases = [];
+    const tree = $('tree'); tree.innerHTML = '';
+    line.gens.forEach((g, gi) => {
+      const li = document.createElement('li'); li.className = 'gen';
+      li.innerHTML = `<span class="gen-n">Gen ${gi + 1}</span><div class="gen-row"></div>`;
+      const row = li.querySelector('.gen-row');
+      g.eggs.forEach((e, ei) => {
+        const isOpen = g.chosen === null, isChosen = g.chosen === ei;
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'pick ' + (isOpen ? 'open' : isChosen ? 'chosen' : 'other');
+        const sp = speciesFor(e);
+        // The other parent, named by the egg's new half: ♥, its pixling, its name.
+        const mate = gi > 0 ? `<span class="mate" title="${e.newer} the ${mateFor(e.newer).name}"><span class="heart" aria-hidden="true">♥</span><canvas width="16" height="16" class="mate-c" aria-hidden="true"></canvas>${e.newer}</span>` : '';
+        const src = gi === 0 ? `<span class="stars">${STARS[e.rarity]}</span> ${sp.name} · the first egg` : isChosen ? `<span class="stars">${STARS[e.rarity]}</span> ${e.isShiny ? '✦ ' : ''}${sp.name}` : '';
+        // An unpicked egg keeps its own name hidden: you see only its other parent.
+        const title = isChosen ? e.name : mate;
+        const partner = '';
+        const pics = isChosen
+          ? `<span class="pics">${partner}<canvas width="16" height="16" class="egg-c" aria-hidden="true"></canvas><span class="arrow" aria-hidden="true">→</span><canvas width="16" height="16" class="pix-c" aria-hidden="true"></canvas></span>`
+          : `<span class="pics">${partner}<canvas width="16" height="16" class="egg-c" aria-hidden="true"></canvas></span>`;
+        b.innerHTML = `${pics}<span class="nm">${title}</span><span class="src">${src}</span>`;
+        b.setAttribute('aria-label', isChosen ? `${e.name} the ${sp.name}, chosen in generation ${gi + 1}` : `${isOpen ? 'Pick' : 'Go back and pick'} the ${lookName(e).replace(' · ', ' ').toLowerCase()} egg with ${e.newer}${e.isShiny ? ', shining' : ''}`);
+        if (isChosen) b.disabled = true; else b.addEventListener('click', () => choose(gi, ei));
+        row.appendChild(b);
+        // A past pixling with its partner: the other parent of the egg picked in the next generation.
+        const next = line.gens[gi + 1];
+        if (isChosen && next && next.chosen !== null) {
+          const name = next.eggs[next.chosen].newer, msp = mateFor(name);
+          const heart = document.createElement('span'); heart.className = 'heart couple'; heart.setAttribute('aria-hidden', 'true'); heart.textContent = '♥';
+          const card = document.createElement('div'); card.className = 'pick chosen partner';
+          card.innerHTML = `<span class="pics"><canvas width="16" height="16" class="pix-c" aria-hidden="true"></canvas></span><span class="nm">${name}</span><span class="src"><span class="stars">${STARS[msp.rarity]}</span> ${msp.name} · partner</span>`;
+          card.setAttribute('aria-label', `${e.name}'s partner, ${name} the ${msp.name}`);
+          row.append(heart, card);
+          familyCanvases.push({ canvas: card.querySelector('canvas'), species: msp, isShiny: false, offset: (next.eggs[next.chosen].seed * 7) % 3600 });
+        }
+        const mc = b.querySelector('.mate-c');
+        if (mc) familyCanvases.push({ canvas: mc, species: mateFor(e.newer), isShiny: false, offset: (e.seed * 7) % 3600 });
+        familyCanvases.push({ canvas: b.querySelector('.egg-c'), egg: e });
+        const pix = b.querySelector('.pix-c');
+        if (pix) familyCanvases.push({ canvas: pix, species: sp, isShiny: !!e.isShiny, offset: e.seed % 3600 });
+      });
+      tree.appendChild(li);
+    });
+  };
+  $('line-new').addEventListener('click', () => newLine(Math.floor(Math.random() * 1e6)));
+  $('line-shiny').addEventListener('change', e => {
+    line.shinyNext = e.target.checked;
+    const gi = line.gens.length - 1, parent = line.gens[gi - 1].eggs[line.gens[gi - 1].chosen];
+    line.gens[gi].eggs = nestAfter(parent, gi - 1, line.shinyNext);
+    drawTree();
+  });
+  newLine(41);
+
+  const frame = now => {
+    const o = { marks: state.marks, shine: state.shine, still };
+    state.pair.forEach((egg, i) => {
+      const canvas = $('egg' + i).querySelector('canvas');
+      if (state.chosen === i) blit(canvas, paintHatch(egg, now - state.hatchStart, o));
+      else blit(canvas, paint(egg, now, o));
+    });
+    for (const g of groupEggs) blit(g.canvas, paint(g.egg, now, { marks: true, shine: null, still }));
+    for (const g of lookEggs) blit(g.canvas, paint(g.egg, now, { marks: true, shine: null, still }));
+    for (const g of familyCanvases) blit(g.canvas, g.species ? paintPixling(g.species, g.isShiny, now, g.offset) : paint(g.egg, now, { marks: true, shine: 'strong', still }));
+    requestAnimationFrame(frame);
+  };
+
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>

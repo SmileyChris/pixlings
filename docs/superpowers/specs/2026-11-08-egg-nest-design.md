@@ -1,7 +1,8 @@
 # The nest: chosen eggs, egg looks and family names
 
 Status: design, agreed in conversation on 2026-11-08. The mockup is a throwaway page at
-https://claude.ai/artifact/LifQZwjeLbr7kbDujWeiUd. It shows the look and the rules, not the code
+https://claude.ai/artifact/LifQZwjeLbr7kbDujWeiUd, with a copy of its source beside this file
+(`2026-11-08-egg-nest-mockup.html`) for its drawing code. It shows the look and the rules, not the code
 to ship.
 
 ## Why
@@ -75,8 +76,9 @@ overall stays roughly as rare as it is today.
   on top.
 - Shiny-egg badge: keep counting shiny eggs **laid**, whether or not you pick the shiny one. The
   badge reads "Lay a shiny egg". *(My call.)*
-- **The release happens at the pick, not at the confirm.** `/pixling hatch` (level 5+) confirms as
-  today, then shows the nest. The old pixling stays until an egg is picked. If the nest is closed,
+- **The release happens at the pick, not at a confirm.** `/pixling hatch` (level 5+) opens the
+  nest straight away. The nest carries today's release warning and a "Keep Miffles" button, so
+  picking an egg is the confirmation. The old pixling stays until an egg is picked. If the nest is closed,
   or can't be shown, nothing changes, and `/pixling hatch` brings the same nest back. *(My call.)*
 - **The nest isn't stored.** It's worked out from the seed each time it's shown. The two base eggs
   never change, but a shiny third egg can turn up later if more XP lays one before you pick. That's
