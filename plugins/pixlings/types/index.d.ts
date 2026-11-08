@@ -94,6 +94,8 @@ declare module 'claude-code' {
       room: PixlingsRoom
       /** The room is open: the band leaves out its door to it. */
       isRoomOpen: boolean
+      /** `/pixling hatch` has the nest open in the room, until an egg is picked or the pixling kept. */
+      nest: boolean
     }
   }
 }
