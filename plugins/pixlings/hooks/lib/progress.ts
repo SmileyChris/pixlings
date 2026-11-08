@@ -1,6 +1,7 @@
 // The pixling's life: hatching rolls, names, experience, levels and what each level unlocks.
 
 import { FACE_IDS, NECK_IDS, type Face, type GearId, type Hat, type Neck } from './gear.ts'
+import { NAMES } from './names.ts'
 import { oneLine, personaFor } from './persona.ts'
 import { RARITY_ORDER, RARITY_WEIGHT, SPECIES } from './sprites.ts'
 import type { Rarity, Species } from './sprites.ts'
@@ -134,13 +135,6 @@ export const emptyDay = (date: string): Day => ({ date, turns: 0, commits: 0, sq
 export const SHINY_EGG_CHANCE = 0.01
 export const SHINY_EGG_XP = 1000
 
-const NAMES = [
-  'Mochi', 'Pixel', 'Byte', 'Nibble', 'Biscuit', 'Pip', 'Sprocket', 'Tofu', 'Noodle', 'Waffles',
-  'Bean', 'Kiwi', 'Miso', 'Pickle', 'Gizmo', 'Dumpling', 'Boba', 'Chip', 'Cookie', 'Fig',
-  'Juniper', 'Lumen', 'Nova', 'Orbit', 'Pebble', 'Quill', 'Rune', 'Tango', 'Echo', 'Ziggy',
-  'Null', 'Sudo', 'Lambda', 'Kernel', 'Cache', 'Async', 'Regex', 'Grep', 'Bit', 'Loop',
-  'Hex', 'Tux', 'Ping', 'Pong', 'Turbo', 'Wasabi', 'Yuzu', 'Mango', 'Olive', 'Clover',
-] as const
 
 /** Picks a rarity by weight, then a species of it, then a name. Shininess is not rolled: it hatches from a shiny egg. */
 export const roll = (random: () => number): { species: Species; name: string } => {
