@@ -58,6 +58,7 @@ import {
   revive,
   shinyEggOf,
   startLine,
+  usedNames,
   DROP_ODDS,
   UNLOCKS,
   unlockedAt,
@@ -2452,7 +2453,8 @@ export const register: Register = (on, options) => {
 
   /** The eggs `p` lays now, worked out once per pixling and shiny egg. */
   const nestNow = (p: Pixling): Egg[] => {
-    const key = `${p.hatchedAt}:${shinyEggOf(p) !== null}:${p.line.newer}:${p.line.side}:${p.family.length}`
+    // Everything a nest is worked out from: its birth time, a shiny egg, the line and its used names.
+    const key = JSON.stringify([p.hatchedAt, shinyEggOf(p) !== null, p.line, usedNames(p)])
     if (nestCache?.key !== key) nestCache = { key, eggs: nestOf(p) }
     return nestCache.eggs
   }

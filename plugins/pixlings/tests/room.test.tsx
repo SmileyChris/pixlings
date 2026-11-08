@@ -904,6 +904,24 @@ describe('the nest', () => {
     await ui.unmount()
   })
 
+  test('a rename while the nest is open shows the eggs the rename lays', { timeoutMs: LONG }, async ($, on) => {
+    // A grandchild whose newer half is Tango, renamed Tango: the same newer half and side, but a new line.
+    const family = [
+      { name: 'Juniper', species: 'cat', newer: 'Juniper', isStart: true, hatchedAt: 1, releasedAt: 2 },
+      { name: 'Juffles', species: 'cat', newer: 'Waffles', isStart: false, hatchedAt: 2, releasedAt: 3 },
+    ]
+    // Born at a time whose eggs' partners do change once Juniper and Waffles are free again.
+    const { clock, db } = host(on, { ...GROWN, hatchedAt: DUCK.hatchedAt + 3000, name: 'Taffles', line: { newer: 'Tango', side: 'start', isStart: false }, family })
+    await hatchCommand($, on, clock)
+    const before = await $.ui.mount(pane('terminal', 100))
+    await before.unmount()
+    await $.command.run({ command: 'pixling', args: 'name Tango' } as never)
+    await clock.advance(1000)
+    const ui = await $.ui.mount(pane('terminal', 100))
+    for (const egg of nestOf(revive(db.get('pixling'))!)) expect(await ui.find({ type: 'Text', text: `♥ ${egg.partner}` }), egg.partner).toBeDefined()
+    await ui.unmount()
+  })
+
   test('the hatch draws the picked egg, from the save alone', () => {
     const parent = { ...revive(GROWN)!, xp: 5000 }
     const egg = nestOf(parent)[0]!
