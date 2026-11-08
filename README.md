@@ -30,7 +30,9 @@ Start a new Claude Code session and an egg hatches. Every setting has a default,
 
 <p align="center"><img src="docs/media/roster.gif" width="100%" alt="The eighteen species: blip, duck, cat, snail, rabbit, chonk, robot, cactus, capybara, penguin, mushroom, owl, axolotl, turtle, octopus, ghost, goose and dragon"></p>
 
-Eighteen species in five rarities, from the six commons (half of all eggs) to a legendary dragon (1.5%). Shinies aren't rolled at hatch: each time your pixling's XP passes another 1,000, there's a 1% chance it lays a shiny egg, and the next egg you hatch is shiny. The card shows when it was laid, once it has been (about one pixling in nine by level 30, two in three by level 99). Each one hatches with a personality of its own, and an adopted Buddy keeps the one it had.
+Eighteen species in five rarities, from the six commons (half of all eggs) to a legendary dragon (1.5%). Shinies aren't rolled at hatch: each time your pixling's XP passes another 1,000, there's a 1% chance it lays a shiny egg, and it joins its nest as a third egg. The card shows when it was laid, once it has been (about one pixling in nine by level 30, two in three by level 99). Each one hatches with a personality of its own, and an adopted Buddy keeps the one it had.
+
+Your first egg hatches on its own. From level 5, `/pixling hatch` opens a nest of two eggs to choose from, three when there's a shiny one. Each egg is speckled, spotted, dappled, marbled or dusted on one of six shells, and its mark hints at what it holds without saying: plain, a mossy vine, glowing veins or a gold cap. Under it is its other parent, and the name it hatches with blends theirs with the newer half of your pixling's (Juniper and Waffles make Juffles), so a family line runs through every name. A pixling can't be released before level 5, and closing the nest changes nothing: the same eggs wait for you.
 
 <p align="center">
   <img src="docs/media/hatch.gif" width="32%" alt="An egg wobbles, cracks and flashes gold, and a legendary dragon hatches">
@@ -98,7 +100,7 @@ It counts the days in a row you show up, and the first session of the day opens 
 | `/pixling wear [item]` | Show the wardrobe, or put on a hat, face piece or neck piece (`none` to take it all off) |
 | `/pixling dex` | The species you have hatched so far |
 | `/pixling off`, `/pixling on` | Send it away (no band, sound, voice, notifications or auto-continue; stats still count), and bring it back. It remembers. |
-| `/pixling hatch` | Release it and hatch a new egg. Level and stats start over; badges, streak and dex stay. |
+| `/pixling hatch` | From level 5, open its nest and pick a new egg to hatch, releasing it. Level and stats start over; badges, streak and dex stay. |
 | `/buddy`, `/buddy pet`, `/buddy off`, `/buddy on` | The same, under the old name |
 
 ## Settings
