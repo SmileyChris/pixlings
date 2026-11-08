@@ -2,6 +2,8 @@
 // particles drawn for a mood at a moment. Pure and deterministic in `t`, so the README media
 // is rendered by this exact code.
 
+import { eggPixels } from './eggs.ts'
+import type { EggLook } from './eggs.ts'
 import { boxOf, drawGear, gearBottom, type Face, type GearId, type Hat, type Neck } from './gear.ts'
 import type { Point, Species } from './sprites.ts'
 
@@ -1059,24 +1061,6 @@ export const renderFrame = (input: FrameInput): Pixels => {
 // ---------------------------------------------------------------------------------------------
 // The egg
 
-const EGG = [
-  '................',
-  '................',
-  '......KKKK......',
-  '.....KWWWWK.....',
-  '....KWWLWWWK....',
-  '...KWWLWWWWWK...',
-  '...KWWWWWSWWK...',
-  '..KWWWWWSSWWWK..',
-  '..KWSWWWWWWWWK..',
-  '..KWSSWWWWWLWK..',
-  '..KWWWWWWWLWWK..',
-  '..KWWWWWWWWWSK..',
-  '...KWWWWWWWSK...',
-  '...KSWWWWWSSK...',
-  '....KKSSSSKK....',
-  '......KKKK......',
-]
 
 const CRACKS: readonly Point[][] = [
   [
@@ -1104,7 +1088,7 @@ export const HATCH_MS = 4600
  * The hatching sequence: the egg wobbles, cracks, flashes in the rarity's color, and the
  * creature appears in a celebration. `t` runs from 0; past HATCH_MS the creature celebrates.
  */
-export const renderHatch = (input: FrameInput, rarityColor: number): Pixels => {
+export const renderHatch = (input: FrameInput, rarityColor: number, look: EggLook | null = null): Pixels => {
   const { t } = input
   if (t >= 4300) {
     return renderFrame({ ...input, mood: 'celebrate', t: t - 4300 })
@@ -1125,7 +1109,9 @@ export const renderHatch = (input: FrameInput, rarityColor: number): Pixels => {
   const urgency = t < 1500 ? 400 : t < 3000 ? 240 : 110
   const isShaking = t % urgency < urgency * 0.35
   const dx = isShaking ? (step(t, 60) % 2 === 0 ? -1 : 1) : 0
-  stamp(p, SPRITE_X + dx, SPRITE_Y, EGG, { K: 0x5d4a3a, W: 0xfaf3e3, L: 0xffffff, S: 0xd9c9a8 })
+  eggPixels(look, t).forEach((c, i) => {
+    if (c !== null) put(p, SPRITE_X + dx + (i % 16), SPRITE_Y + Math.floor(i / 16), c)
+  })
   const stages = t < 1500 ? 0 : t < 2500 ? 1 : t < 3300 ? 2 : 3
   for (let i = 0; i < stages; i++) {
     for (const [x, y] of CRACKS[i] ?? []) put(p, SPRITE_X + dx + x, SPRITE_Y + y, 0x5d4a3a)
