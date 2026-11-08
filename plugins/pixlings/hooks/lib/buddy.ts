@@ -9,6 +9,7 @@
 // printed, stored or sent, and a parse error is not passed on (an engine's message can quote it).
 
 import { oneLine } from './persona.ts'
+import { startLine } from './progress.ts'
 import type { Pixling } from './progress.ts'
 
 export type Companion = {
@@ -220,6 +221,7 @@ export const adopt = (p: Pixling, c: Companion): Pixling => ({
   name: c.name,
   persona: c.personality ?? p.persona,
   adoptedFrom: { name: c.name, hatchedAt: c.hatchedAt },
+  line: startLine(c.name),
   species: c.species,
   isShiny: p.isShiny || c.isShiny,
   dex: p.dex.includes(c.species) ? p.dex : [...p.dex, c.species],

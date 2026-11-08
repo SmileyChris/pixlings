@@ -58,6 +58,19 @@ export type Streak = { last: string | null; days: number; best: number }
 /** One local day's work, for the morning recap. */
 export type Day = { date: string; turns: number; commits: number; squashed: number; tests: number; xp: number }
 
+/**
+ * Its place in its family line. `newer` is the newer half of its name, which its child carries on
+ * the same `side`; a blended pixling's newer half is its other parent, the partner. `isStart`:
+ * the line starts here, at a first egg, a rename, an adoption or a save from before lines.
+ */
+export type Line = { newer: string; side: 'start' | 'end'; isStart: boolean }
+
+/** A pixling released before this one, kept in the family history. */
+export type Ancestor = { name: string; species: string; newer: string; isStart: boolean; hatchedAt: number; releasedAt: number }
+
+/** A line starting at `name`: the whole name is the newer half, at the start. */
+export const startLine = (name: string): Line => ({ newer: name, side: 'start', isStart: true })
+
 /** The old /buddy companion this pixling was adopted from: its days together count from then. */
 export type AdoptedFrom = { name: string; hatchedAt: number | null }
 
@@ -96,6 +109,11 @@ export type Pixling = {
    * and for saves from before.
    */
   eggSeed: number | null
+  line: Line
+  /** The pixlings before it, oldest first; not itself. */
+  family: Ancestor[]
+  /** The seed of the egg it hatched from, to draw that egg; null for a first egg. */
+  egg: number | null
 }
 
 export const emptyStats = (): Stats => ({
@@ -171,6 +189,9 @@ export const hatchPixling = (random: () => number, now: number, dex: readonly st
     lifetime: emptyLifetime(),
     pettedAt: null,
     eggSeed: null,
+    line: startLine(name),
+    family: [],
+    egg: null,
     dex: [...new Set([...dex, species.id])],
     badges: {},
     streak: { last: null, days: 0, best: 0 },
@@ -443,6 +464,9 @@ export const revive = (value: unknown): Pixling | null => {
     lifetime: isRecord(v.lifetime) ? { ...emptyLifetime(), ...numbersOf(v.lifetime) } : seedLifetime(v, hatchedAt),
     pettedAt: typeof v.pettedAt === 'number' ? v.pettedAt : null,
     eggSeed: typeof v.eggSeed === 'number' ? v.eggSeed : null,
+    line: lineOf(v.line) ?? startLine(v.name.slice(0, 24)),
+    family: Array.isArray(v.family) ? v.family.flatMap(a => ancestorFrom(a) ?? []) : [],
+    egg: typeof v.egg === 'number' && Number.isFinite(v.egg) ? v.egg : null,
     dex: Array.isArray(v.dex) ? v.dex.filter((d): d is string => typeof d === 'string') : [v.species],
     badges: isRecord(v.badges) ? numbersOf(v.badges) : {},
     streak: isRecord(v.streak)
@@ -481,6 +505,47 @@ const seedLifetime = (v: Partial<Pixling>, hatchedAt: number): Lifetime => {
   lifetime.shinyEggs = Math.max((isLucky ? 1 : 0) - laid, v.isShiny === true ? 1 : 0)
   return lifetime
 }
+
+const lineOf = (v: unknown): Line | null =>
+  isRecord(v) && typeof v.newer === 'string' && (v.side === 'start' || v.side === 'end') && typeof v.isStart === 'boolean'
+    ? { newer: v.newer.slice(0, 24), side: v.side, isStart: v.isStart }
+    : null
+
+const ancestorFrom = (v: unknown): Ancestor | null =>
+  isRecord(v) &&
+  typeof v.name === 'string' &&
+  typeof v.species === 'string' &&
+  typeof v.newer === 'string' &&
+  typeof v.isStart === 'boolean' &&
+  typeof v.hatchedAt === 'number' &&
+  typeof v.releasedAt === 'number'
+    ? { name: v.name, species: v.species, newer: v.newer, isStart: v.isStart, hatchedAt: v.hatchedAt, releasedAt: v.releasedAt }
+    : null
+
+/** The pixling it hatched from, or null where its line starts. */
+export const parentOf = (p: Pixling): Ancestor | null => (p.line.isStart ? null : (p.family.at(-1) ?? null))
+
+/** The names this line has used: its start's and every fresh roll since, newest first. */
+export const usedNames = (p: Pixling): string[] => {
+  const used = [p.line.newer]
+  if (p.line.isStart) return used
+  for (let i = p.family.length - 1; i >= 0; i--) {
+    const a = p.family[i]!
+    used.push(a.newer)
+    if (a.isStart) break
+  }
+  return used
+}
+
+/** `p` as its family history keeps it once released at `releasedAt`. */
+export const ancestorOf = (p: Pixling, releasedAt: number): Ancestor => ({
+  name: p.name,
+  species: p.species,
+  newer: p.line.newer,
+  isStart: p.line.isStart,
+  hatchedAt: p.hatchedAt,
+  releasedAt,
+})
 
 /** A stored value that is there but is no pixling this version can read: never to be written over. */
 export const isUnreadable = (value: unknown): boolean => value !== undefined && value !== null && revive(value) === null
@@ -549,6 +614,7 @@ export const mergeSave = (stored: Pixling, base: Pixling | null, ours: Pixling):
     species: pick(stored.species, since.species, ours.species),
     persona: pick(stored.persona, since.persona, ours.persona),
     adoptedFrom: pickValue(stored.adoptedFrom, since.adoptedFrom, ours.adoptedFrom),
+    line: pickValue(stored.line, since.line, ours.line),
     name: pick(stored.name, since.name, ours.name),
     hat: pick(stored.hat, since.hat, ours.hat),
     face: pick(stored.face, since.face, ours.face),
