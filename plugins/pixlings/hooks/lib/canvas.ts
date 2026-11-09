@@ -588,16 +588,25 @@ const drawCap = (p: Pixels, s: Species, ox: number, oy: number, t: number): void
   stamp(p, ox + hx - 3, oy + hy - CAP_LIFT, [pick(CAP_SPIN, step(t, 90)), ...CAP_DOME], CAP_COLORS)
 }
 
-/** The judge's brain: two pink lobes and their folds, sat where the cap sits. */
+/** The judge's brain: two pink lobes and their folds, sat on the head where the cap sits. */
 const BRAIN = ['.PDPDP.', 'PHPPDPP', 'PPDPPDP', '.DPDPP.']
+/** A smaller brain for a small head, which the big one would hang over. */
+const BRAIN_SMALL = ['.PDP.', 'PHDPP', '.DPD.']
+const SMALL_HEADS: ReadonlySet<string> = new Set(['duck', 'snail', 'robot', 'turtle', 'goose', 'dragon'])
+/** Nudges from the head point, as the art faces: chonk's brow sits a row high, the snail's eyes are up its stalks. */
+const BRAIN_NUDGE: Readonly<Record<string, Point>> = { chonk: [0, -1], snail: [7, -2] }
 const BRAIN_COLORS: Readonly<Record<string, number>> = { P: 0xff9ec8, D: 0xc8578f, H: 0xffe0ee }
 /** How long the brain rests at each end of its wiggle. */
 export const BRAIN_WIGGLE_MS = 320
 
-/** The brain wiggles a pixel aside and back while the judge thinks. */
-const drawBrain = (p: Pixels, s: Species, ox: number, oy: number, t: number): void => {
+/** The brain wiggles a pixel aside and back while the judge thinks. Its bottom row sits on the head point. */
+const drawBrain = (p: Pixels, s: Species, isFlipped: boolean, ox: number, oy: number, t: number): void => {
   const [hx, hy] = s.head
-  stamp(p, ox + hx - 3 + (step(t, BRAIN_WIGGLE_MS) % 2), oy + hy - CAP_LIFT, BRAIN, BRAIN_COLORS)
+  const [nx, ny] = BRAIN_NUDGE[s.id] ?? [0, 0]
+  const art = SMALL_HEADS.has(s.id) ? BRAIN_SMALL : BRAIN
+  const half = Math.floor((art[0]?.length ?? 0) / 2)
+  const x = ox + hx + (isFlipped ? -nx : nx) - half + (step(t, BRAIN_WIGGLE_MS) % 2)
+  stamp(p, x, oy + hy + ny - (art.length - 1), art, BRAIN_COLORS)
 }
 
 const BEAD = ['.D', 'DW', 'DD']
@@ -1008,7 +1017,7 @@ export const renderFrame = (input: FrameInput): Pixels => {
   const isRaining = !isScaled && mood === 'sad'
   if (input.isJudging || input.hasCap) {
     if (isRaining) drawCloud(p, spriteX, s)
-    if (input.isJudging) drawBrain(layer, s, ox, oy, t)
+    if (input.isJudging) drawBrain(layer, s, isFlipped, ox, oy, t)
     else drawCap(layer, s, ox, oy, t)
   } else {
     if (input.isBlooming || (s.id === 'cactus' && (mood === 'celebrate' || mood === 'love'))) {

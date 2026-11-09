@@ -26,6 +26,7 @@ const SLOW = {
 const PRESS = 0xdfe6f2
 const BEAD = 0x4aa8ff
 const CAP_RED = 0xff5a6e
+const BRAIN_PINK = 0xff9ec8
 const SPROUT = 0x8ee08a
 const COUNT = 0x8b95a8
 const PUFF = 0xb4bfd0
@@ -356,6 +357,39 @@ describe('plan mode', () => {
     await clock.advance(100)
     const after = await band($)
     expect(after.has(CAP_RED)).toBe(false)
+    expect(after.has(SPROUT)).toBe(true)
+  })
+
+  test("while Auto's judge is out the brain sits on the head in place of the hat, and goes when the verdict comes", async ($, on) => {
+    const { clock } = host(on)
+    on('session.model', () => ({ value: 'claude-opus-5-5' }) as never)
+    on('session.messages', () => ({ value: [] }) as never)
+    on('command.list', () => ({ value: [] }) as never)
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    let answer: () => void = () => undefined
+    const verdict = new Promise<void>(resolve => (answer = resolve))
+    on('model.complete', async () => {
+      await verdict
+      const text = '{"model":"opus","effort":"high","why":"a refactor","sure":0.9}'
+      const usage = { input_tokens: 70, output_tokens: 22, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+      return { value: { isAnswered: true, text, usage } } as never
+    })
+    await $.session.start(START)
+    await clock.advance(3000)
+    const before = await band($)
+    expect(before.has(SPROUT)).toBe(true)
+    expect(before.has(BRAIN_PINK)).toBe(false)
+    const submitted = $.prompt.submit({ text: 'refactor the auth module', origin: { kind: 'composer' } } as never)
+    await clock.advance(100)
+    const judging = await band($)
+    expect(judging.has(BRAIN_PINK)).toBe(true)
+    expect(judging.has(SPROUT)).toBe(false)
+    expect(judging.rows).toBe(before.rows)
+    answer()
+    await submitted
+    await clock.advance(100)
+    const after = await band($)
+    expect(after.has(BRAIN_PINK)).toBe(false)
     expect(after.has(SPROUT)).toBe(true)
   })
 
@@ -708,6 +742,32 @@ describe('the drawing stays on the canvas', () => {
               if (bottom < 3) problems.push(`${where}: cut off at the top (dome bottom at row ${bottom})`)
               // The red and blue halves, six pixels each, unless something flies across them.
               if (!OVER_HEAD.includes(mood) && (count(f, CAP_RED) !== 6 || count(f, CAP_BLUE) !== 6)) problems.push(`${where}: dome not whole`)
+            }
+          }
+        }
+      }
+    }
+    expect(problems.slice(0, 10)).toEqual([])
+  })
+
+  test("the judge's brain is drawn whole on every species, hat, mood and facing, and never grows the band", { timeoutMs: LONG }, () => {
+    // The brain's pink is no species' color: every pink pixel is the brain's.
+    for (const s of SPECIES) expect([...Object.values(s.palette), ...Object.values(s.shiny)]).not.toContain(BRAIN_PINK)
+    const problems: string[] = []
+    for (const s of SPECIES) {
+      for (const isFlipped of [false, true]) {
+        for (const hat of HATS) {
+          for (const mood of MOODS) {
+            for (const t of [0, 140, 333, 700, 2900]) {
+              const f = renderFrame({ species: s, isShiny: false, mood, t, hat, isFlipped, isJudging: true })
+              const where = `${s.id} ${mood} ${hat ?? 'bare'}${isFlipped ? ' flipped' : ''} t=${t}`
+              if (f.h !== layoutFor(s, hat).h) problems.push(`${where}: height ${f.h}`)
+              // The big brain has 16 pink pixels, the small one 6: fewer, and the canvas edge or the hat cut it. Up the
+              // snail's stalks it also meets the sparkles and the Z's, which fly over it.
+              const pink = count(f, BRAIN_PINK)
+              const crossed = OVER_HEAD.includes(mood) || (s.id === 'snail' && (mood === 'happy' || mood === 'sleep'))
+              if (!crossed && pink !== 16 && pink !== 6) problems.push(`${where}: brain not whole (${pink} pink)`)
+              if (pink === 0) problems.push(`${where}: no brain`)
             }
           }
         }

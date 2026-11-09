@@ -99,7 +99,8 @@ name, a free-text personality, a hatch time).
 19. **Reactions.** Native `session.compact` (main loop only) presses the sprite flat and springs
     it back with `tokensBefore/After` when core gives them; `contextPercent ≥ 85` puts a bead of
     sweat on its brow, once per crossing; the `plan_mode` attachment puts on a thinking cap over
-    the hat (the hook only observes).
+    the hat (the hook only observes). While Auto effort's judge is out a pink brain wiggles on
+    the head in place of the hat or cap, read from `auto.view().isJudging` each frame.
 20. **The squad.** `classic.SubagentStart/Stop` add and retire 8×9 minis tinted by agent type,
     drawn in a strip beside the sprite taken first from the walking room; a subagent's tool icon
     goes over its mini. Four stand, the rest are counted.
