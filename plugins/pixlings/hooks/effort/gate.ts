@@ -1,7 +1,7 @@
 // What the effort gate shows, as segments. Pure: no `$`, no colours. The band gives each role its colour and makes
 // the stops and the Auto slot clickable; this file decides only the text, the roles, and what fits.
 //
-//   effort  L ─ M ─ ●H ─ X ─ Mx ┃ A  "multi-file refactor"            full gate, in `full` and `compact`
+//   effort  L ─ M ─ ●H ─ X ─ Mx ┃ Auto  "multi-file refactor"         full gate, in `full` (and `compact`, as `A`)
 //   LMHXM A                                                            mini gate, in `slim` and `minimal`
 
 import { EFFORTS } from './judge.ts'
@@ -55,9 +55,10 @@ function arrowsOf(v: GateView): { lo: number; hi: number; glyph: string } | null
 /**
  * The full gate, fitted to `width` columns. Auto's reason is shown whole or not at all: when the whole
  * `"<why>"` does not fit, it goes, never cut, as a cut reason says little. Then the `effort` label goes. The
- * five stops and the Auto slot always stay, even if they are wider than `width` on their own.
+ * five stops and the Auto slot always stay, even if they are wider than `width` on their own. The slot says
+ * `auto`: `Auto`, or `A` where the band is compact.
  */
-export function gateRow(v: GateView, width: number): GateSeg[] {
+export function gateRow(v: GateView, width: number, auto: 'Auto' | 'A' = 'Auto'): GateSeg[] {
   const arrows = arrowsOf(v)
   const stops: GateSeg[] = []
   EFFORTS.forEach((level, i) => {
@@ -67,7 +68,7 @@ export function gateRow(v: GateView, width: number): GateSeg[] {
     }
     stops.push(level === v.effort ? { text: KNOB + STOP[level], role: 'active', level } : { text: STOP[level], role: 'stop', level })
   })
-  const rest: GateSeg[] = [...stops, { text: ' ┃ ', role: 'sep' }, { text: 'A', role: v.isAuto ? 'autoOn' : 'auto' }]
+  const rest: GateSeg[] = [...stops, { text: ' ┃ ', role: 'sep' }, { text: auto, role: v.isAuto ? 'autoOn' : 'auto' }]
   const label: GateSeg[] = [{ text: 'effort', role: 'label' }, { text: GAP, role: 'sep' }]
 
   const reason = v.isAuto ? v.why.replace(/\s+/g, ' ').trim() : ''

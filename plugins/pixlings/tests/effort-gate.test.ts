@@ -21,12 +21,16 @@ const view = (over: Partial<Parameters<typeof gateRow>[0]> = {}): Parameters<typ
 
 describe('gateRow: the full gate', () => {
   test('at rest on high with Auto on: label, five stops, the knob on H, the Auto slot and its reason', () => {
-    expect(text(gateRow(view(), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A  "multi-file refactor"')
+    expect(text(gateRow(view(), 80, 'A'))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A  "multi-file refactor"')
+  })
+
+  test('the Auto slot says Auto unless told to say A (the compact band)', () => {
+    expect(text(gateRow(view(), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ Auto  "multi-file refactor"')
   })
 
   test('the knob is on the active stop only: its seg is ● plus the label, role active, with its level', () => {
     for (const [i, level] of EFFORTS.entries()) {
-      const segs = gateRow(view({ effort: level }), 80)
+      const segs = gateRow(view({ effort: level }), 80, 'A')
       const actives = segs.filter((s) => s.role === 'active')
       expect(actives.length).toBe(1)
       expect(actives[0]!.text).toBe('●' + ['L', 'M', 'H', 'X', 'Mx'][i]!)
@@ -36,97 +40,97 @@ describe('gateRow: the full gate', () => {
   })
 
   test('the other stops are plain stops, each carrying its level so a click can pick it', () => {
-    const stops = gateRow(view({ effort: 'high' }), 80).filter((s) => s.role === 'stop')
+    const stops = gateRow(view({ effort: 'high' }), 80, 'A').filter((s) => s.role === 'stop')
     expect(stops.map((s) => s.text)).toEqual(['L', 'M', 'X', 'Mx'])
     expect(stops.map((s) => s.level)).toEqual(['low', 'medium', 'xhigh', 'max'])
   })
 
   test('with no effort known yet every stop is a plain stop and there is no knob', () => {
-    const segs = gateRow(view({ effort: undefined }), 80)
+    const segs = gateRow(view({ effort: undefined }), 80, 'A')
     expect(segs.filter((s) => s.role === 'stop').map((s) => s.text)).toEqual(['L', 'M', 'H', 'X', 'Mx'])
     expect(segs.some((s) => s.role === 'active')).toBe(false)
     expect(text(segs)).not.toContain('●')
   })
 
   test('the Auto slot follows isAuto: lit and followed by the reason when on, dim and alone when off', () => {
-    const on = gateRow(view({ isAuto: true }), 80)
+    const on = gateRow(view({ isAuto: true }), 80, 'A')
     expect(on.find((s) => s.text === 'A')?.role).toBe('autoOn')
     expect(on.find((s) => s.role === 'why')?.text).toBe('"multi-file refactor"')
 
-    const off = gateRow(view({ isAuto: false }), 80)
+    const off = gateRow(view({ isAuto: false }), 80, 'A')
     expect(off.find((s) => s.text === 'A')?.role).toBe('auto')
     expect(off.some((s) => s.role === 'why')).toBe(false)
     expect(text(off)).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('Auto on with no reason yet draws no empty ""', () => {
-    expect(text(gateRow(view({ why: '' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
-    expect(text(gateRow(view({ why: '  \n ' }), 80))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: '' }), 80, 'A'))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: '  \n ' }), 80, 'A'))).toBe('effort  L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('a reason is kept to one line: runs of whitespace and newlines become one space', () => {
-    expect(text(gateRow(view({ why: ' two\n  lines ' }), 80))).toContain('"two lines"')
+    expect(text(gateRow(view({ why: ' two\n  lines ' }), 80, 'A'))).toContain('"two lines"')
   })
 })
 
 describe('gateRow: the shift arrows', () => {
   test('medium to xhigh, before it ends: the rails between become → and the knob is on X', () => {
-    const segs = gateRow(view({ effort: 'xhigh', shift: { from: 'medium', to: 'xhigh', until: NOW + 1 } }), 80)
+    const segs = gateRow(view({ effort: 'xhigh', shift: { from: 'medium', to: 'xhigh', until: NOW + 1 } }), 80, 'A')
     expect(text(segs)).toContain('L ─ M → H → ●X ─ Mx')
     expect(segs.filter((s) => s.role === 'arrow').map((s) => s.text)).toEqual([' → ', ' → '])
     expect(segs.filter((s) => s.role === 'rail').length).toBe(2)
   })
 
   test('high to low, before it ends: the rails between become ← and the knob is on L', () => {
-    const segs = gateRow(view({ effort: 'low', shift: { from: 'high', to: 'low', until: NOW + 1 } }), 80)
+    const segs = gateRow(view({ effort: 'low', shift: { from: 'high', to: 'low', until: NOW + 1 } }), 80, 'A')
     expect(text(segs)).toContain('●L ← M ← H ─ X ─ Mx')
     expect(segs.filter((s) => s.role === 'arrow').map((s) => s.text)).toEqual([' ← ', ' ← '])
   })
 
   test('a shift of one step turns the one rail between the two stops', () => {
-    const segs = gateRow(view({ effort: 'max', shift: { from: 'xhigh', to: 'max', until: NOW + 1 } }), 80)
+    const segs = gateRow(view({ effort: 'max', shift: { from: 'xhigh', to: 'max', until: NOW + 1 } }), 80, 'A')
     expect(text(segs)).toContain('L ─ M ─ H ─ X → ●Mx')
     expect(segs.filter((s) => s.role === 'arrow').length).toBe(1)
   })
 
   test('at and after `until` the rails are dashes again', () => {
     for (const now of [NOW, NOW + 1, NOW + 5_000]) {
-      const segs = gateRow(view({ effort: 'xhigh', now, shift: { from: 'medium', to: 'xhigh', until: NOW } }), 80)
+      const segs = gateRow(view({ effort: 'xhigh', now, shift: { from: 'medium', to: 'xhigh', until: NOW } }), 80, 'A')
       expect(text(segs)).toContain('L ─ M ─ H ─ ●X ─ Mx')
       expect(segs.some((s) => s.role === 'arrow')).toBe(false)
     }
   })
 
   test('just before `until` the arrows are still there', () => {
-    const segs = gateRow(view({ effort: 'xhigh', now: NOW - 1, shift: { from: 'medium', to: 'xhigh', until: NOW } }), 80)
+    const segs = gateRow(view({ effort: 'xhigh', now: NOW - 1, shift: { from: 'medium', to: 'xhigh', until: NOW } }), 80, 'A')
     expect(segs.some((s) => s.role === 'arrow')).toBe(true)
   })
 
   test('no shift, no arrows', () => {
-    expect(gateRow(view({ shift: null }), 80).some((s) => s.role === 'arrow')).toBe(false)
+    expect(gateRow(view({ shift: null }), 80, 'A').some((s) => s.role === 'arrow')).toBe(false)
   })
 
   test('if the person picked another level during the shift, the arrows to the old target are not drawn', () => {
     // Auto moved medium to xhigh, then a click chose low inside the 2.5 s.
-    const segs = gateRow(view({ effort: 'low', shift: { from: 'medium', to: 'xhigh', until: NOW + 1_000 } }), 80)
+    const segs = gateRow(view({ effort: 'low', shift: { from: 'medium', to: 'xhigh', until: NOW + 1_000 } }), 80, 'A')
     expect(text(segs)).toContain('●L ─ M ─ H ─ X ─ Mx')
     expect(segs.some((s) => s.role === 'arrow')).toBe(false)
   })
 
   test('with no effort known there is nothing to point at, so no arrows', () => {
-    const segs = gateRow(view({ effort: undefined, shift: { from: 'medium', to: 'xhigh', until: NOW + 1_000 } }), 80)
+    const segs = gateRow(view({ effort: undefined, shift: { from: 'medium', to: 'xhigh', until: NOW + 1_000 } }), 80, 'A')
     expect(segs.some((s) => s.role === 'arrow')).toBe(false)
   })
 
   test('a shift naming a level the gate does not have draws no arrows', () => {
-    const segs = gateRow(view({ effort: 'high', shift: { from: 'bogus', to: 'high', until: NOW + 1_000 } }), 80)
+    const segs = gateRow(view({ effort: 'high', shift: { from: 'bogus', to: 'high', until: NOW + 1_000 } }), 80, 'A')
     expect(segs.some((s) => s.role === 'arrow')).toBe(false)
     expect(text(segs)).toContain('L ─ M ─ ●H ─ X ─ Mx')
   })
 
   test('the arrows keep the gate the same width as it has at rest, bar the knob moving', () => {
-    const rest = text(gateRow(view({ effort: 'xhigh' }), 80))
-    const moving = text(gateRow(view({ effort: 'xhigh', shift: { from: 'medium', to: 'xhigh', until: NOW + 1 } }), 80))
+    const rest = text(gateRow(view({ effort: 'xhigh' }), 80, 'A'))
+    const moving = text(gateRow(view({ effort: 'xhigh', shift: { from: 'medium', to: 'xhigh', until: NOW + 1 } }), 80, 'A'))
     expect(moving.length).toBe(rest.length)
   })
 })
@@ -136,68 +140,68 @@ describe('gateRow: fitting the width', () => {
   const BARE = 'effort  L ─ M ─ ●H ─ X ─ Mx ┃ A'
 
   test('a reason too long for the width is dropped whole: no reason and no …, the label stays', () => {
-    const segs = gateRow(view({ why: LONG }), 60)
+    const segs = gateRow(view({ why: LONG }), 60, 'A')
     expect(text(segs)).toBe(BARE)
     expect(segs.some((s) => s.role === 'why')).toBe(false)
     expect(text(segs)).not.toContain('…')
   })
 
   test('a reason that fits is shown whole, with no …', () => {
-    const t = text(gateRow(view({ why: 'tiny' }), 60))
+    const t = text(gateRow(view({ why: 'tiny' }), 60, 'A'))
     expect(t).toContain('"tiny"')
     expect(t).not.toContain('…')
   })
 
   test('a reason that just fits is shown whole; one column less and the whole reason goes', () => {
-    const whole = text(gateRow(view(), 200))
+    const whole = text(gateRow(view(), 200, 'A'))
     expect(whole).toBe(BARE + '  "multi-file refactor"')
     expect(whole.length).toBe(54)
-    expect(text(gateRow(view(), 54))).toBe(whole)
-    expect(text(gateRow(view(), 53))).toBe(BARE)
+    expect(text(gateRow(view(), 54, 'A'))).toBe(whole)
+    expect(text(gateRow(view(), 53, 'A'))).toBe(BARE)
   })
 
   test('a long reason shows whole at exactly its width, and not one column short of it', () => {
     const whole = BARE + '  "' + LONG + '"'
-    expect(text(gateRow(view({ why: LONG }), whole.length))).toBe(whole)
-    expect(text(gateRow(view({ why: LONG }), whole.length - 1))).toBe(BARE)
+    expect(text(gateRow(view({ why: LONG }), whole.length, 'A'))).toBe(whole)
+    expect(text(gateRow(view({ why: LONG }), whole.length - 1, 'A'))).toBe(BARE)
   })
 
   test('a one-letter reason shows at 36 columns, where it fits whole; two letters need 37', () => {
-    expect(text(gateRow(view({ why: 'x' }), 36))).toBe(BARE + '  "x"')
-    expect(text(gateRow(view({ why: 'x' }), 35))).toBe(BARE)
-    expect(text(gateRow(view({ why: 'xy' }), 36))).toBe(BARE)
-    expect(text(gateRow(view({ why: 'xy' }), 37))).toBe(BARE + '  "xy"')
+    expect(text(gateRow(view({ why: 'x' }), 36, 'A'))).toBe(BARE + '  "x"')
+    expect(text(gateRow(view({ why: 'x' }), 35, 'A'))).toBe(BARE)
+    expect(text(gateRow(view({ why: 'xy' }), 36, 'A'))).toBe(BARE)
+    expect(text(gateRow(view({ why: 'xy' }), 37, 'A'))).toBe(BARE + '  "xy"')
   })
 
   test('a reason is measured as shown, its whitespace collapsed: two lines fit at 44, not 43', () => {
     const why = ' two\n  lines '
-    expect(text(gateRow(view({ why }), 44))).toBe(BARE + '  "two lines"')
-    expect(text(gateRow(view({ why }), 43))).toBe(BARE)
+    expect(text(gateRow(view({ why }), 44, 'A'))).toBe(BARE + '  "two lines"')
+    expect(text(gateRow(view({ why }), 43, 'A'))).toBe(BARE)
   })
 
   test('a reason with an emoji is shown whole or not at all, never half of it', () => {
     const why = 'sixteen letters!😀'
     const whole = BARE + '  "' + why + '"'
-    expect(text(gateRow(view({ why }), whole.length))).toBe(whole)
-    expect(text(gateRow(view({ why }), whole.length - 1))).toBe(BARE)
+    expect(text(gateRow(view({ why }), whole.length, 'A'))).toBe(whole)
+    expect(text(gateRow(view({ why }), whole.length - 1, 'A'))).toBe(BARE)
   })
 
   test('at 30 columns the label goes, and the stops and A stay', () => {
-    const segs = gateRow(view({ why: LONG }), 30)
+    const segs = gateRow(view({ why: LONG }), 30, 'A')
     expect(text(segs)).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
     expect(text(segs).length).toBeLessThanOrEqual(30)
     expect(segs.some((s) => s.role === 'label')).toBe(false)
   })
 
   test('the label goes only after the reason has, and the label fits at 31 but not 30', () => {
-    expect(text(gateRow(view({ why: LONG }), 31))).toBe(BARE)
-    expect(text(gateRow(view({ why: LONG }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
-    expect(text(gateRow(view({ why: 'x' }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: LONG }), 31, 'A'))).toBe(BARE)
+    expect(text(gateRow(view({ why: LONG }), 30, 'A'))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ why: 'x' }), 30, 'A'))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('with Auto off the label goes at the same width', () => {
-    expect(text(gateRow(view({ isAuto: false }), 31))).toBe(BARE)
-    expect(text(gateRow(view({ isAuto: false }), 30))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
+    expect(text(gateRow(view({ isAuto: false }), 31, 'A'))).toBe(BARE)
+    expect(text(gateRow(view({ isAuto: false }), 30, 'A'))).toBe('L ─ M ─ ●H ─ X ─ Mx ┃ A')
   })
 
   test('at every width the text fits whenever the stops and A fit, the stops and A always stay, and nothing is cut', () => {
@@ -205,9 +209,9 @@ describe('gateRow: fitting the width', () => {
       for (const isAuto of [true, false]) {
         for (const why of [LONG, 'multi-file refactor', 'x']) {
           for (let width = 0; width <= 130; width++) {
-            const segs = gateRow(view({ effort, isAuto, why }), width)
+            const segs = gateRow(view({ effort, isAuto, why }), width, 'A')
             const t = text(segs)
-            const stopsAndA = text(gateRow(view({ effort, isAuto: false }), 0)).length
+            const stopsAndA = text(gateRow(view({ effort, isAuto: false }), 0, 'A')).length
             if (stopsAndA <= width) expect(t.length).toBeLessThanOrEqual(width)
             expect(segs.filter((s) => s.role === 'stop' || s.role === 'active').length).toBe(5)
             expect(segs.some((s) => s.text === 'A')).toBe(true)
@@ -224,13 +228,13 @@ describe('gateRow: fitting the width', () => {
   test('arrows do not change what fits', () => {
     const shift = { from: 'low', to: 'max', until: NOW + 1 }
     for (let width = 24; width <= 130; width++) {
-      expect(text(gateRow(view({ effort: 'max', shift, why: LONG }), width)).length).toBeLessThanOrEqual(width)
+      expect(text(gateRow(view({ effort: 'max', shift, why: LONG }), width, 'A')).length).toBeLessThanOrEqual(width)
     }
   })
 
   test('no segment is empty, so nothing paints a blank for nothing', () => {
     for (const width of [20, 31, 32, 43, 44, 60, 200]) {
-      for (const s of gateRow(view({ why: LONG }), width)) expect(s.text.length).toBeGreaterThan(0)
+      for (const s of gateRow(view({ why: LONG }), width, 'A')) expect(s.text.length).toBeGreaterThan(0)
     }
   })
 })

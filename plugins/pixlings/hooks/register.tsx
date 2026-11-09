@@ -2915,7 +2915,7 @@ export const register: Register = (on, options) => {
     // column's 56. The column widens as far as the gate's row needs and no further; every other row keeps the column's
     // own width, so none of them moves.
     const isGateRow = (block: (typeof blocks)[number]): boolean => block.kind === 'row' && block.parts.some(piece => piece.kind === 'gate')
-    const gateSegs = gate && blocks.some(isGateRow) ? gateRow(gate, Math.max(width, e.props.bodyColumns - spriteColumns - 4)) : null
+    const gateSegs = gate && blocks.some(isGateRow) ? gateRow(gate, Math.max(width, e.props.bodyColumns - spriteColumns - 4), bandSize === 'compact' ? 'A' : 'Auto') : null
     const columnWidth = gateSegs ? Math.max(width, gateColumns(gateSegs)) : width
 
     /** One part of a row in the column (see `layoutInfo`). */
